@@ -54,22 +54,32 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
           has_signing=true
+          missing_keys=()
           for key in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
             if [ -z "${!key}" ]; then
               has_signing=false
-              break
+              missing_keys+=("${key}")
             fi
           done
+          echo "has_signing=${has_signing}"
           if [ "${has_signing}" = "false" ]; then
             echo "::warning::未配置签名 Secrets，Python 构建脚本会使用 debug 签名"
+            printf '缺少签名配置: %s\n' "${missing_keys[*]}" >&2
             exit 0
           fi
           keystore_path="${RUNNER_TEMP}/release.jks"
-          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${keystore_path}"
-          keytool -list -keystore "${keystore_path}" \
+          if ! printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${keystore_path}"; then
+            echo "签名库解码失败: ANDROID_KEYSTORE_BASE64" >&2
+            exit 1
+          fi
+          if ! keytool -list -keystore "${keystore_path}" \
             -storepass "${ANDROID_KEYSTORE_PASSWORD}" \
-            -alias "${ANDROID_KEY_ALIAS}" > /dev/null
+            -alias "${ANDROID_KEY_ALIAS}" > /dev/null; then
+            echo "签名库校验失败: 请检查 ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS" >&2
+            exit 1
+          fi
           echo "签名验证通过"
 
   verify:
