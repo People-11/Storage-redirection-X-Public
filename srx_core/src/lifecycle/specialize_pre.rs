@@ -11,7 +11,6 @@ use crate::platform::paths::monotonic_ms;
 use crate::platform::{self, fs};
 use crate::redirect::{PathRouter, policy};
 use crate::zygisk::{abi, jni};
-use std::ffi::CString;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static MONITOR_HOOK_PROCESS_COUNT: AtomicU64 = AtomicU64::new(0);
@@ -39,6 +38,11 @@ impl RuntimeFlow {
     }
 
     fn reset_specialize_state(&mut self) {
+        // 关掉上一次残留的伴生 fd，避免句柄泄漏
+        if self.companion_fd >= 0 {
+            unsafe { libc::close(self.companion_fd) };
+            self.companion_fd = -1;
+        }
         self.app_data_dir.clear();
         self.should_redirect = false;
         self.should_monitor = false;
@@ -440,10 +444,6 @@ impl RuntimeFlow {
             jni::get_jstring_utf8(self.env, unsafe { *args.app_data_dir })
         };
 
-        if !self.is_system_writer_hook_redirect {
-            clear_mount_status_marker(&self.app_data_dir, self.app_pid);
-        }
-
         if self.is_system_writer_hook_redirect {
             PathRouter::instance().configure(
                 &self.package_name,
@@ -560,7 +560,8 @@ impl RuntimeFlow {
         }
 
         let send_started_ms = monotonic_ms();
-        self.is_mount_request_sent = send_companion_request_payload(self.api.as_ref(), &payload);
+        self.companion_fd = send_companion_request_payload(self.api.as_ref(), &payload);
+        self.is_mount_request_sent = self.companion_fd >= 0;
         let send_ms = monotonic_ms().saturating_sub(send_started_ms);
         log_specialize_perf(&SpecializePerf {
             package_name: &self.package_name,
@@ -777,46 +778,31 @@ fn build_companion_request_payload(
     serde_json::to_string(&payload).unwrap_or_default()
 }
 
-// 序列化挂载请求并通过伴生进程 fd 发送
-fn send_companion_request_payload(api: Option<&abi::Api>, payload: &str) -> bool {
+// 序列化挂载请求并通过伴生进程 fd 发送。成功时返回保持打开的 fd，供 post 阶段
+// 读取挂载结果（兼作同步屏障）；失败返回 -1。
+fn send_companion_request_payload(api: Option<&abi::Api>, payload: &str) -> libc::c_int {
     let Some(api) = api else {
-        return false;
+        return -1;
     };
     if payload.is_empty() {
-        return false;
+        return -1;
     }
 
     let fd = api.connect_companion();
     if fd < 0 {
         log::warn!("companion connect failed");
-        return false;
+        return -1;
     }
 
     let payload_len = payload.len() as u32;
     let sent =
         fs::write_all(fd, &payload_len.to_ne_bytes()) && fs::write_all(fd, payload.as_bytes());
-    unsafe { libc::close(fd) };
-
     if !sent {
         log::warn!("companion send failed");
-        return false;
+        unsafe { libc::close(fd) };
+        return -1;
     }
 
     log::info!("companion req sent (async mount)");
-    true
-}
-
-// 发送挂载请求前清理当前 PID 标记，避免读取到旧结果。
-fn clear_mount_status_marker(app_data_dir: &str, app_pid: i32) {
-    if app_data_dir.is_empty() || app_pid <= 0 {
-        return;
-    }
-
-    let marker_path = format!("{}/.srx_mount_status_{}", app_data_dir, app_pid);
-    let Ok(c_path) = CString::new(marker_path.clone()) else {
-        return;
-    };
-    if unsafe { libc::unlink(c_path.as_ptr()) } == 0 {
-        log::info!("old marker cleared {}", marker_path);
-    }
+    fd
 }
