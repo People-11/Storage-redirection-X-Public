@@ -1,16 +1,16 @@
-// 应用 specialize 后流程：等待挂载状态并安装 PLT Hook
+// 应用 specialize 后流程：读取挂载结果并安装 PLT Hook
 use super::RuntimeFlow;
 use crate::hook::InterceptHub;
+use crate::platform::fs;
 use crate::platform::paths::monotonic_ms;
-use crate::platform::unique_fd::UniqueFd;
 use crate::platform::{self, anti_detect};
 use crate::zygisk::abi;
-use libc::{O_CLOEXEC, O_RDONLY, open, read, unlink};
+use libc::c_int;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static PLT_HOOK_INSTALLED: AtomicBool = AtomicBool::new(false);
-const MOUNT_STATUS_POLL_COUNT: i32 = 60;
-const MOUNT_STATUS_POLL_DELAY_US: u32 = 50 * 1000;
+// 读取伴生进程挂载结果的超时；companion 挂载完成后才写回，故此读取兼作同步屏障
+const MOUNT_RESULT_TIMEOUT_SEC: i64 = 3;
 const POST_SPECIALIZE_SLOW_MS: i64 = 20;
 
 impl RuntimeFlow {
@@ -27,6 +27,11 @@ impl RuntimeFlow {
 
         if !self.should_redirect && !self.should_monitor {
             let anti_started_ms = monotonic_ms();
+            // 此分支只在模块常驻（如 fuse_fixer）时到达，搬迁自身消除 .so 路径泄露
+            let relocated = anti_detect::relocate_self();
+            if relocated > 0 {
+                log::info!("self relocated segments n={}", relocated);
+            }
             // 无需重定向或监控的应用仍需命名匿名可执行区域
             let named_count = anti_detect::name_anonymous_executable_regions();
             let anti_ms = monotonic_ms().saturating_sub(anti_started_ms);
@@ -48,9 +53,8 @@ impl RuntimeFlow {
                 );
             } else {
                 let mount_started_ms = monotonic_ms();
-                wait_for_mount_status(
-                    &self.app_data_dir,
-                    self.app_pid,
+                read_mount_result(
+                    self.companion_fd,
                     self.is_mount_request_sent,
                     &mut self.is_mount_applied,
                 );
@@ -58,7 +62,12 @@ impl RuntimeFlow {
             }
         } else if self.should_redirect && self.is_system_writer_hook_redirect {
             self.is_mount_applied = false;
-            log::info!("writer per-caller hook map (skip marker wait)");
+            log::info!("writer per-caller hook map (skip mount wait)");
+        }
+        // 伴生 fd 用完即关，无论是否真的读取了结果
+        if self.companion_fd >= 0 {
+            unsafe { libc::close(self.companion_fd) };
+            self.companion_fd = -1;
         }
 
         let hook_started_ms = monotonic_ms();
@@ -71,7 +80,12 @@ impl RuntimeFlow {
         let hook_ms = monotonic_ms().saturating_sub(hook_started_ms);
 
         let anti_started_ms = monotonic_ms();
-        // Hook 安装后命名匿名可执行区域，覆盖模块代码和 hook trampoline
+        // Hook 安装后先把自身文件背书段搬进匿名内存（消除 .so 路径与孤儿映射指纹），
+        // 再命名所有匿名可执行区域，覆盖模块代码和 hook trampoline
+        let relocated = anti_detect::relocate_self();
+        if relocated > 0 {
+            log::info!("self relocated segments n={}", relocated);
+        }
         let named_count = anti_detect::name_anonymous_executable_regions();
         let anti_ms = monotonic_ms().saturating_sub(anti_started_ms);
         if named_count > 0 {
@@ -88,68 +102,37 @@ impl RuntimeFlow {
     }
 }
 
-// 轮询读取挂载状态标记文件，确认挂载是否成功
-fn wait_for_mount_status(
-    app_data_dir: &str,
-    app_pid: i32,
-    is_mount_request_sent: bool,
-    is_mount_applied_out: &mut bool,
-) {
+// 从伴生进程 fd 读取挂载结果（4 字节 i32）。companion 在挂载完成后才写回结果，
+// 故此阻塞读取兼作同步屏障；带 SO_RCVTIMEO 超时，避免 companion 异常时永久阻塞。
+fn read_mount_result(companion_fd: c_int, is_mount_request_sent: bool, is_mount_applied_out: &mut bool) {
     *is_mount_applied_out = false;
-    let mut last_errno_code = 0;
 
-    if !is_mount_request_sent {
+    if !is_mount_request_sent || companion_fd < 0 {
         log::warn!("mount req not sent, skip wait");
         return;
     }
-    if app_data_dir.is_empty() || app_pid <= 0 {
-        log::warn!("mount ctx invalid, skip wait");
-        return;
-    }
 
-    let marker_path = format!("{}/.srx_mount_status_{}", app_data_dir, app_pid);
-    log::info!("wait marker {}", marker_path);
-
-    let Ok(c_path) = std::ffi::CString::new(marker_path.clone()) else {
-        return;
+    let tv = libc::timeval {
+        tv_sec: MOUNT_RESULT_TIMEOUT_SEC,
+        tv_usec: 0,
     };
-
-    let mut poll_count = 0;
-    for _ in 0..MOUNT_STATUS_POLL_COUNT {
-        poll_count += 1;
-        let fd = unsafe { open(c_path.as_ptr(), O_RDONLY | O_CLOEXEC) };
-        if fd >= 0 {
-            let file = UniqueFd::new(fd);
-            let mut ch = [0u8; 1];
-            let n = unsafe { read(file.get(), ch.as_mut_ptr() as *mut _, 1) };
-            if n == 1 {
-                unsafe { unlink(c_path.as_ptr()) };
-                *is_mount_applied_out = ch[0] == b'1';
-                log::info!(
-                    "marker read n={} val={} applied={} polls={}",
-                    n,
-                    ch[0] as char,
-                    *is_mount_applied_out,
-                    poll_count
-                );
-                break;
-            }
-        } else {
-            last_errno_code = unsafe { *libc::__errno() };
-        }
-        unsafe { libc::usleep(MOUNT_STATUS_POLL_DELAY_US) };
+    unsafe {
+        libc::setsockopt(
+            companion_fd,
+            libc::SOL_SOCKET,
+            libc::SO_RCVTIMEO,
+            &tv as *const _ as *const libc::c_void,
+            std::mem::size_of::<libc::timeval>() as libc::socklen_t,
+        );
     }
 
-    if *is_mount_applied_out {
-        log::info!("app mount confirmed pid={}", app_pid);
+    let mut buf = [0u8; 4];
+    if fs::read_all(companion_fd, &mut buf) {
+        let status = i32::from_ne_bytes(buf);
+        *is_mount_applied_out = status == 1;
+        log::info!("mount result status={} applied={}", status, *is_mount_applied_out);
     } else {
-        log::warn!(
-            "mount unknown/failed pid={} marker={} polls={} errno={}",
-            app_pid,
-            marker_path,
-            poll_count,
-            last_errno_code
-        );
+        log::warn!("mount result read failed/timeout fd={}", companion_fd);
     }
 }
 
