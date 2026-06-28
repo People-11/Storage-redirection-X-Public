@@ -76,6 +76,7 @@ CLAUDE.md
 # Local scratch files
 tmp_*.rs
 *.txt
+!srx_core/native/CMakeLists.txt
 !srx_core/vendor/lsplant/CMakeLists.txt
 !srx_core/vendor/lsplant/external/dex_builder/CMakeLists.txt
 !srx_core/vendor/lsplant/external/dex_builder/external/parallel_hashmap/CMakeLists.txt
