@@ -83,15 +83,12 @@ class SettingsViewModel(
         SettingsUiEvent.RestoreFinished(backupRestoreRepo.restorePackageConfigsFromUri(contentResolver, inputUri))
     }
 
+    // 与文件监视一致：保存成功后才切换开关，再重启媒体服务使新设置生效
     fun setFuseFixerEnabled(isEnabled: Boolean) = launchRootTask {
-        val previous = _uiState.value.isFuseFixerEnabled
-        _uiState.update { it.copy(isFuseFixerEnabled = isEnabled) }
         val redirectApps = configRepo.load(0).redirectApps
-        val isSaved = configRepo.setFuseFixerEnabled(isEnabled)
-        if (isSaved) {
-            RootService.restartMediaProvider(redirectApps)
-        }
-        _uiState.update { it.copy(isFuseFixerEnabled = if (isSaved) isEnabled else previous) }
+        if (!configRepo.setFuseFixerEnabled(isEnabled)) return@launchRootTask SettingsUiEvent.SaveFailed
+        _uiState.update { it.copy(isFuseFixerEnabled = isEnabled) }
+        RootService.restartMediaProvider(redirectApps)
         null
     }
 
