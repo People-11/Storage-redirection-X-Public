@@ -19,6 +19,7 @@ import org.srx.monitor.MonitorProtocol;
 // 通过媒体服务收集共享存储访问，事件异步发送给独立服务。
 public final class FileMonitorHooks extends Hooker {
   private static final String TAG = "SrxFileMonitor";
+  private static final int PER_USER_RANGE = 100000;
   private static final HashSet<Method> INSTALLED = new HashSet<>();
   private static volatile IBinder service;
   private static IBinder.DeathRecipient serviceDeath;
@@ -316,13 +317,36 @@ public final class FileMonitorHooks extends Hooker {
   }
 
   // 映射路径的索引行改指实际落盘路径，否则关闭后的扫描找不到文件而删除该行
-  private static void redirectDataPath(ContentValues values, int uid) {
-    String path = values == null ? null : values.getAsString("_data");
-    if (path == null)
+  private static void redirectDataPath(Uri uri, ContentValues values, int uid) {
+    if (values == null)
       return;
+    String path = values.getAsString("_data");
+    if (path == null) {
+      redirectRelativePath(uri, values, uid);
+      return;
+    }
     String target = Hooker.resolveRedirectPath(path, uid);
     if (target != null)
       values.put("_data", target);
+  }
+
+  // 现代写法只传 relative_path，_data 由 MediaProvider 按主存储拼出；改写目录才能让索引指向映射目标
+  private static void redirectRelativePath(Uri uri, ContentValues values, int uid) {
+    String relative = values.getAsString("relative_path");
+    if (relative == null || !isPrimaryVolume(uri))
+      return;
+    String root = "/storage/emulated/" + (uid / PER_USER_RANGE) + "/";
+    String directory = root + relative.replaceAll("^/+|/+$", "");
+    String target = Hooker.resolveRedirectPath(directory, uid);
+    if (target == null || !target.startsWith(root))
+      return;
+    values.put("relative_path", target.substring(root.length()) + "/");
+  }
+
+  private static boolean isPrimaryVolume(Uri uri) {
+    String volume = android.provider.MediaStore.getVolumeName(uri);
+    return android.provider.MediaStore.VOLUME_EXTERNAL.equals(volume)
+        || android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY.equals(volume);
   }
 
   // isReadOnlyPath 只对真实存在的只读文件返回 true，应用经代写落在沙盒的文件不受限制
@@ -381,7 +405,7 @@ public final class FileMonitorHooks extends Hooker {
     int uid = Binder.getCallingUid();
     boolean isForeignMedia = kind.startsWith("media_") && uid != android.os.Process.myUid();
     if (isForeignMedia)
-      redirectDataPath((ContentValues) args[2], uid);
+      redirectDataPath((Uri) args[1], (ContentValues) args[2], uid);
     if (uid == android.os.Process.myUid() || INSIDE_PROVIDER.get())
       return callBackup(args);
     // 插入只读目录无需拦截：代写的文件与父目录由原生 Hook 落到调用方沙盒
