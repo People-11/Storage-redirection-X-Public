@@ -133,49 +133,11 @@ impl PathRouter {
         state.redirect_target =
             paths::resolve_user_path(&paths::normalize(redirect_target), state.user_id);
 
-        state.allowed_real_paths.clear();
-        for path in allowed_real_paths {
-            let mut resolved = paths::normalize(path);
-            if paths::has_unsafe_segments(&resolved) {
-                continue;
-            }
-            resolved = paths::resolve_user_path(&resolved, state.user_id);
-            if resolved.is_empty() {
-                continue;
-            }
-            if resolved == state.storage_root {
-                continue;
-            }
-            if !paths::starts_with(&resolved, &format!("{}/", state.storage_root)) {
-                continue;
-            }
-            state.allowed_real_paths.push(resolved);
-        }
+        state.allowed_real_paths =
+            resolve_rule_paths(allowed_real_paths, state.user_id, &state.storage_root);
 
-        state.allowed_real_paths.sort();
-        state.allowed_real_paths.dedup();
-
-        state.excluded_real_paths.clear();
-        for path in excluded_real_paths {
-            let mut resolved = paths::normalize(path);
-            if paths::has_unsafe_segments(&resolved) {
-                continue;
-            }
-            resolved = paths::resolve_user_path(&resolved, state.user_id);
-            if resolved.is_empty() {
-                continue;
-            }
-            if resolved == state.storage_root {
-                continue;
-            }
-            if !paths::starts_with(&resolved, &format!("{}/", state.storage_root)) {
-                continue;
-            }
-            state.excluded_real_paths.push(resolved);
-        }
-
-        state.excluded_real_paths.sort();
-        state.excluded_real_paths.dedup();
+        state.excluded_real_paths =
+            resolve_rule_paths(excluded_real_paths, state.user_id, &state.storage_root);
 
         state.path_mappings.clear();
         for mapping in path_mappings {
@@ -433,3 +395,18 @@ impl PathRouter {
 }
 
 static PATH_ROUTER: Lazy<PathRouter> = Lazy::new(PathRouter::new);
+
+// 规范化为该用户存储下的绝对路径，丢弃越界、含遍历段或指向整个存储根目录的规则
+fn resolve_rule_paths(rules: &[String], user_id: i32, storage_root: &str) -> Vec<String> {
+    let storage_prefix = format!("{}/", storage_root);
+    let mut resolved: Vec<String> = rules
+        .iter()
+        .map(|rule| paths::normalize(rule))
+        .filter(|path| !paths::has_unsafe_segments(path))
+        .map(|path| paths::resolve_user_path(&path, user_id))
+        .filter(|path| paths::starts_with(path, &storage_prefix))
+        .collect();
+    resolved.sort();
+    resolved.dedup();
+    resolved
+}
