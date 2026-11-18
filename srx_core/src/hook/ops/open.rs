@@ -4,6 +4,7 @@ use super::super::path as path_utils;
 use super::super::runtime;
 use super::super::stats::InterceptHub;
 use super::super::util::c_str_to_string;
+use crate::platform::paths;
 use crate::redirect::{policy, process_redirect_path, record_redirect_hit};
 use libc::{AT_FDCWD, c_char, c_int, c_void, mode_t};
 use std::borrow::Cow;
@@ -61,13 +62,6 @@ unsafe fn call_openat2(
     )
 }
 
-fn storage_to_data_media_path(path: &str) -> Option<String> {
-    const STORAGE_PREFIX: &str = "/storage/emulated/";
-    const DATA_MEDIA_PREFIX: &str = "/data/media/";
-    path.strip_prefix(STORAGE_PREFIX)
-        .map(|suffix| format!("{}{}", DATA_MEDIA_PREFIX, suffix))
-}
-
 fn maybe_retry_system_writer_backend_open<F>(
     op_name: &str,
     from_path: &str,
@@ -87,9 +81,7 @@ where
         return initial_result;
     }
 
-    let Some(backend_path) = storage_to_data_media_path(redirected_path) else {
-        return initial_result;
-    };
+    let backend_path = paths::storage_to_data_media_path(redirected_path);
     if backend_path == redirected_path {
         return initial_result;
     }

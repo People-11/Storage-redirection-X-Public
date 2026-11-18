@@ -1,3 +1,4 @@
+use super::SQLITE_SHM_MIN_SIZE;
 use super::caller::{
     current_fuse_caller_uid, current_thread_caller_package_for_uid,
     should_allow_private_owner_sqlite_for_owner, should_force_private_owner_sqlite_for_owner,
@@ -10,9 +11,8 @@ use super::resolve::{
     normalize_fuse_storage_path, private_owner_sqlite_path_mentions_caller_package,
     resolve_caller_packages_with_explicit, resolve_private_owner_sqlite_path,
 };
-use super::{ANDROID_APP_UID_START, SQLITE_SHM_MIN_SIZE};
 use crate::config::SettingsHub;
-use crate::platform::{self, paths};
+use crate::platform::{self, ANDROID_APP_UID_START, paths};
 use crate::redirect::policy;
 
 pub fn should_allow_private_owner_sqlite_access(path: &str, caller_uid: i32) -> bool {

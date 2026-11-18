@@ -1,7 +1,7 @@
-use super::ANDROID_APP_UID_START;
 use crate::config::SettingsHub;
 use crate::hook::context;
 use crate::hook::stats::InterceptHub;
+use crate::platform::ANDROID_APP_UID_START;
 
 const FUSE_CALLER_MAX_AGE_MS: i64 = 1500;
 

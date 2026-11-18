@@ -423,7 +423,7 @@ fn resolve_private_owner_sqlite_backend(
         return None;
     };
 
-    let backend_path = storage_to_data_media_path(&storage_path);
+    let backend_path = paths::storage_to_data_media_path(&storage_path);
     if backend_path == storage_path || !backend_path.starts_with("/data/media/") {
         return None;
     }
@@ -439,15 +439,6 @@ fn backend_fd_size(fd: c_int) -> i64 {
     }
     let statbuf = unsafe { statbuf.assume_init() };
     statbuf.st_size
-}
-
-fn storage_to_data_media_path(path: &str) -> String {
-    const STORAGE_PREFIX: &str = "/storage/emulated/";
-    const DATA_MEDIA_PREFIX: &str = "/data/media/";
-    if !path.starts_with(STORAGE_PREFIX) {
-        return path.to_string();
-    }
-    format!("{}{}", DATA_MEDIA_PREFIX, &path[STORAGE_PREFIX.len()..])
 }
 
 fn current_errno() -> i32 {

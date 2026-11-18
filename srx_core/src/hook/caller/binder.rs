@@ -1,6 +1,6 @@
 // Binder 线程识别与 IPCThreadState 符号解析，提供调用方 UID/PID
-use super::ANDROID_APP_UID_START;
 use crate::hook::context;
+use crate::platform::ANDROID_APP_UID_START;
 use libc::{RTLD_LOCAL, RTLD_NOW, c_void, dlopen, dlsym, getpid, getuid, prctl};
 use std::cell::Cell;
 use std::ffi::CString;

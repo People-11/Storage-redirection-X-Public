@@ -7,6 +7,7 @@ pub mod paths;
 pub mod unique_fd;
 
 pub const ANDROID_USER_ID_OFFSET: i32 = 100000;
+pub const ANDROID_APP_UID_START: i32 = 10000;
 pub const MIN_SUPPORTED_API_LEVEL: i32 = 31;
 const ISOLATED_APP_ID_START: i32 = 99000;
 const ISOLATED_APP_ID_END: i32 = 99999;
