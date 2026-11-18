@@ -1,7 +1,6 @@
 // 解析磁盘上的 libart.so，给 LSPlant 提供 ART 符号解析
 // 内存解析在 Android 14+ 上不可靠（relro 段会被 mprotect 为 ---p），统一走文件路径
 
-#![allow(dead_code)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
@@ -86,10 +85,6 @@ impl ElfImg {
             return None;
         }
         Some(ElfImg { load_bias, image })
-    }
-
-    pub fn base(&self) -> usize {
-        self.load_bias
     }
 
     // 精确匹配符号名；命中返回运行时函数地址，未命中返回 null

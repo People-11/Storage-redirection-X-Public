@@ -100,10 +100,6 @@ pub fn init(env: *mut JNIEnv, hooker_class: jclass) -> bool {
     true
 }
 
-pub fn hooker_class() -> jclass {
-    HOOKER_CLASS_GLOBAL.load(Ordering::Acquire)
-}
-
 unsafe extern "C" fn do_hook(
     env: *mut JNIEnv,
     thiz: jobject,

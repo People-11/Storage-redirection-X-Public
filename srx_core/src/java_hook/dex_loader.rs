@@ -1,8 +1,6 @@
 // 把内嵌 DEX 字节加载为 Java Class：byte[] → ByteBuffer → InMemoryDexClassLoader → loadClass
 // 每步失败都返回 null；本地引用通过 LocalRef RAII 确保清理
 
-#![allow(dead_code)]
-
 use crate::zygisk::jni::{
     call_object_method_a, call_static_object_method_a, delete_local_ref, find_class, get_method_id,
     get_static_method_id, new_byte_array, new_jstring_utf8, new_object_a, set_byte_array_region,

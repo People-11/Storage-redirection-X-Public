@@ -28,9 +28,10 @@ struct ISzAlloc {
     free: extern "C" fn(*const ISzAlloc, *mut c_void),
 }
 
+// 取值由 xz 解码器写入，未构造的变体仍需保留以匹配 C 枚举
+#[allow(dead_code)]
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 enum ECoderStatus {
     NotSpecified = 0,
     FinishedWithMark = 1,
