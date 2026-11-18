@@ -324,22 +324,13 @@ fn build_caller_mappings(caller_package: &str, caller_uid: i32) -> Vec<PathMappi
     let mut mappings: Vec<PathMapping> = Vec::new();
 
     for mapping in raw_mappings {
-        let current_path =
-            paths::resolve_user_path(&paths::normalize(&mapping.request_path), user_id);
-        let target_path = paths::resolve_user_path(&paths::normalize(&mapping.final_path), user_id);
-
-        if current_path.is_empty() || target_path.is_empty() {
+        let (Some(current_path), Some(target_path)) = (
+            paths::resolve_storage_child(&mapping.request_path, user_id),
+            paths::resolve_storage_child(&mapping.final_path, user_id),
+        ) else {
             continue;
-        }
-        if paths::has_unsafe_segments(&current_path) || paths::has_unsafe_segments(&target_path) {
-            continue;
-        }
+        };
         if current_path == target_path {
-            continue;
-        }
-        if !paths::starts_with(&current_path, &format!("{}/", storage_root))
-            || !paths::starts_with(&target_path, &format!("{}/", storage_root))
-        {
             continue;
         }
         let is_current_android = current_path == android_prefix

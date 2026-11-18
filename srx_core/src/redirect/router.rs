@@ -133,71 +133,18 @@ impl PathRouter {
         state.redirect_target =
             paths::resolve_user_path(&paths::normalize(redirect_target), state.user_id);
 
-        state.allowed_real_paths.clear();
-        for path in allowed_real_paths {
-            let mut resolved = paths::normalize(path);
-            if paths::has_unsafe_segments(&resolved) {
-                continue;
-            }
-            resolved = paths::resolve_user_path(&resolved, state.user_id);
-            if resolved.is_empty() {
-                continue;
-            }
-            if resolved == state.storage_root {
-                continue;
-            }
-            if !paths::starts_with(&resolved, &format!("{}/", state.storage_root)) {
-                continue;
-            }
-            state.allowed_real_paths.push(resolved);
-        }
+        state.allowed_real_paths = resolve_rule_paths(allowed_real_paths, state.user_id);
 
-        state.allowed_real_paths.sort();
-        state.allowed_real_paths.dedup();
-
-        state.excluded_real_paths.clear();
-        for path in excluded_real_paths {
-            let mut resolved = paths::normalize(path);
-            if paths::has_unsafe_segments(&resolved) {
-                continue;
-            }
-            resolved = paths::resolve_user_path(&resolved, state.user_id);
-            if resolved.is_empty() {
-                continue;
-            }
-            if resolved == state.storage_root {
-                continue;
-            }
-            if !paths::starts_with(&resolved, &format!("{}/", state.storage_root)) {
-                continue;
-            }
-            state.excluded_real_paths.push(resolved);
-        }
-
-        state.excluded_real_paths.sort();
-        state.excluded_real_paths.dedup();
+        state.excluded_real_paths = resolve_rule_paths(excluded_real_paths, state.user_id);
 
         state.path_mappings.clear();
         for mapping in path_mappings {
-            let current_path =
-                paths::resolve_user_path(&paths::normalize(&mapping.request_path), state.user_id);
-            let target_path =
-                paths::resolve_user_path(&paths::normalize(&mapping.final_path), state.user_id);
-            if paths::has_unsafe_segments(&current_path) || paths::has_unsafe_segments(&target_path)
-            {
+            let (Some(current_path), Some(target_path)) = (
+                paths::resolve_storage_child(&mapping.request_path, state.user_id),
+                paths::resolve_storage_child(&mapping.final_path, state.user_id),
+            ) else {
                 continue;
-            }
-            if current_path.is_empty() || target_path.is_empty() {
-                continue;
-            }
-            if current_path == state.storage_root || target_path == state.storage_root {
-                continue;
-            }
-            if !paths::starts_with(&current_path, &format!("{}/", state.storage_root))
-                || !paths::starts_with(&target_path, &format!("{}/", state.storage_root))
-            {
-                continue;
-            }
+            };
             if current_path == target_path {
                 continue;
             }
@@ -433,3 +380,13 @@ impl PathRouter {
 }
 
 static PATH_ROUTER: Lazy<PathRouter> = Lazy::new(PathRouter::new);
+
+fn resolve_rule_paths(rules: &[String], user_id: i32) -> Vec<String> {
+    let mut resolved: Vec<String> = rules
+        .iter()
+        .filter_map(|rule| paths::resolve_storage_child(rule, user_id))
+        .collect();
+    resolved.sort();
+    resolved.dedup();
+    resolved
+}
