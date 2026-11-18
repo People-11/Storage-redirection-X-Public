@@ -1,7 +1,7 @@
 // 通过 PID/UID 解析调用方包名，多候选时按重定向启用与映射优选唯一解
-use super::ANDROID_APP_UID_START;
 use crate::config::SettingsHub;
 use crate::hook::stats::InterceptHub;
+use crate::platform::ANDROID_APP_UID_START;
 use crate::redirect::policy;
 use libc::{c_int, c_void};
 use std::ffi::CString;

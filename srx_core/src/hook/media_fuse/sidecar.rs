@@ -5,9 +5,8 @@ use super::caller::{
     should_force_private_owner_sqlite_for_owner,
 };
 use super::recent::has_recent_private_owner_sqlite_access_for_caller;
-use super::resolve::{
-    is_sqlite_shm_sidecar_path, resolve_private_owner_sqlite_path, storage_to_data_media_path,
-};
+use super::resolve::{is_sqlite_shm_sidecar_path, resolve_private_owner_sqlite_path};
+use crate::platform::paths;
 use std::ffi::CString;
 
 pub fn prepare_private_owner_sqlite_sidecar(path: &str) -> bool {
@@ -22,7 +21,7 @@ pub fn prepare_private_owner_sqlite_sidecar(path: &str) -> bool {
         return false;
     }
 
-    let backend_path = storage_to_data_media_path(&normalized_path);
+    let backend_path = paths::storage_to_data_media_path(&normalized_path);
     if backend_path == normalized_path || !backend_path.starts_with("/data/media/") {
         return false;
     }

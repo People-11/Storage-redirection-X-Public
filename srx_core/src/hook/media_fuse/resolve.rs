@@ -45,15 +45,6 @@ pub(super) fn is_sqlite_shm_sidecar_path(path: &str) -> bool {
     lower.ends_with(".db-shm") || lower.ends_with(".sqlite-shm") || lower.ends_with(".sqlite3-shm")
 }
 
-pub(super) fn storage_to_data_media_path(path: &str) -> String {
-    const STORAGE_PREFIX: &str = "/storage/emulated/";
-    const DATA_MEDIA_PREFIX: &str = "/data/media/";
-    if !path.starts_with(STORAGE_PREFIX) {
-        return path.to_string();
-    }
-    format!("{}{}", DATA_MEDIA_PREFIX, &path[STORAGE_PREFIX.len()..])
-}
-
 pub(super) fn resolve_caller_packages_with_explicit(
     caller_uid: i32,
     caller_package: &str,

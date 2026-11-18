@@ -5,8 +5,8 @@ use super::writer_perf::{
 use crate::config::{RawUserEnabledState, SettingsHub};
 use crate::domain::PathMapping;
 use crate::hook::stats::InterceptHub;
-use crate::platform::paths;
-use crate::redirect::router::{RedirectAction, RedirectDecision};
+use crate::platform::{self, paths};
+use crate::redirect::router::RedirectDecision;
 use crate::redirect::thumbnail_diag::{self, ThumbnailDecisionDiag};
 use crate::redirect::{policy, writer};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -149,10 +149,7 @@ impl<'a> WriterFlow<'a> {
         if !self.pathname.is_empty() {
             return None;
         }
-        let decision = RedirectDecision {
-            action: RedirectAction::Allow,
-            new_path: String::new(),
-        };
+        let decision = RedirectDecision::allow();
         Some(self.finish("empty_path", decision, false))
     }
 
@@ -160,7 +157,7 @@ impl<'a> WriterFlow<'a> {
         let raw_normalized = paths::normalize(self.pathname);
         self.is_data_media = paths::starts_with(&raw_normalized, "/data/media/");
         self.normalized_path = if self.is_data_media {
-            writer::data_media_to_storage_path(&raw_normalized)
+            paths::data_media_to_storage_path(&raw_normalized)
         } else {
             raw_normalized
         };
@@ -177,7 +174,7 @@ impl<'a> WriterFlow<'a> {
             &mut self.effective_caller_uid,
         );
         self.is_caller_from_inferred = false;
-        if original_caller_uid >= writer::ANDROID_APP_UID_START {
+        if original_caller_uid >= platform::ANDROID_APP_UID_START {
             writer::maybe_override_system_writer_caller_by_path(
                 &self.normalized_path,
                 &mut self.effective_caller_uid,
@@ -203,7 +200,7 @@ impl<'a> WriterFlow<'a> {
                 .collect();
             if let Some(pkg) = crate::monitor::infer_caller_package_by_stack(&candidates) {
                 let inferred_uid = policy::get_uid_for_package(&pkg);
-                if inferred_uid >= writer::ANDROID_APP_UID_START {
+                if inferred_uid >= platform::ANDROID_APP_UID_START {
                     self.effective_caller_uid = inferred_uid;
                 }
                 log::debug!(
@@ -229,10 +226,7 @@ impl<'a> WriterFlow<'a> {
             self.effective_caller_uid,
             self.pathname,
         );
-        let decision = RedirectDecision {
-            action: RedirectAction::Allow,
-            new_path: String::new(),
-        };
+        let decision = RedirectDecision::allow();
         Some(self.finish("caller_empty", decision, false))
     }
 
@@ -245,10 +239,7 @@ impl<'a> WriterFlow<'a> {
             self.effective_caller_uid,
             self.pathname,
         );
-        let decision = RedirectDecision {
-            action: RedirectAction::Allow,
-            new_path: String::new(),
-        };
+        let decision = RedirectDecision::allow();
         Some(self.finish("user_empty", decision, false))
     }
 
@@ -269,10 +260,7 @@ impl<'a> WriterFlow<'a> {
                 self.effective_caller_uid,
                 self.pathname,
             );
-            let decision = RedirectDecision {
-                action: RedirectAction::Allow,
-                new_path: String::new(),
-            };
+            let decision = RedirectDecision::allow();
             return Some(self.finish("disabled", decision, false));
         }
         None
@@ -283,10 +271,7 @@ impl<'a> WriterFlow<'a> {
         if writer::is_path_in_user_storage(&self.resolved_path, self.user_id) {
             return None;
         }
-        let decision = RedirectDecision {
-            action: RedirectAction::Allow,
-            new_path: String::new(),
-        };
+        let decision = RedirectDecision::allow();
         Some(self.finish("outside_storage", decision, false))
     }
 
@@ -304,7 +289,7 @@ impl<'a> WriterFlow<'a> {
             return None;
         }
         let new_path = if self.is_data_media {
-            writer::storage_to_data_media_path(&self.mapped_path)
+            paths::storage_to_data_media_path(&self.mapped_path)
         } else {
             self.mapped_path.clone()
         };
@@ -315,10 +300,7 @@ impl<'a> WriterFlow<'a> {
             self.resolved_path,
             new_path
         );
-        let decision = RedirectDecision {
-            action: RedirectAction::Redirect,
-            new_path,
-        };
+        let decision = RedirectDecision::redirect(new_path);
         self.is_mapping_hit = true;
         Some(self.finish("mapping", decision, true))
     }
@@ -334,10 +316,7 @@ impl<'a> WriterFlow<'a> {
                     self.effective_caller_uid,
                     self.resolved_path
                 );
-                let decision = RedirectDecision {
-                    action: RedirectAction::Allow,
-                    new_path: String::new(),
-                };
+                let decision = RedirectDecision::allow();
                 return Some(self.finish("mapping_target", decision, true));
             }
         }
@@ -378,10 +357,7 @@ impl<'a> WriterFlow<'a> {
                         allowed_count
                     );
                 }
-                let decision = RedirectDecision {
-                    action: RedirectAction::Allow,
-                    new_path: String::new(),
-                };
+                let decision = RedirectDecision::allow();
                 return Some(self.finish("allowed", decision, true));
             }
             writer::CallerRealPathMatch::None => {}
@@ -409,10 +385,7 @@ impl<'a> WriterFlow<'a> {
             self.pathname,
         );
         self.fallback_ms = paths::monotonic_ms().saturating_sub(self.fallback_started_ms);
-        let decision = RedirectDecision {
-            action: RedirectAction::Allow,
-            new_path: String::new(),
-        };
+        let decision = RedirectDecision::allow();
         Some(self.finish("target_empty", decision, true))
     }
 
@@ -424,15 +397,12 @@ impl<'a> WriterFlow<'a> {
         );
         if fallback_path.is_empty() || fallback_path == self.resolved_path {
             self.fallback_ms = paths::monotonic_ms().saturating_sub(self.fallback_started_ms);
-            let decision = RedirectDecision {
-                action: RedirectAction::Allow,
-                new_path: String::new(),
-            };
+            let decision = RedirectDecision::allow();
             return self.finish("fallback_empty", decision, true);
         }
 
         let new_path = if self.is_data_media {
-            writer::storage_to_data_media_path(&fallback_path)
+            paths::storage_to_data_media_path(&fallback_path)
         } else {
             fallback_path
         };
@@ -443,10 +413,7 @@ impl<'a> WriterFlow<'a> {
             &new_path,
         );
         self.fallback_ms = paths::monotonic_ms().saturating_sub(self.fallback_started_ms);
-        let decision = RedirectDecision {
-            action: RedirectAction::Redirect,
-            new_path,
-        };
+        let decision = RedirectDecision::redirect(new_path);
         self.finish("fallback", decision, true)
     }
 

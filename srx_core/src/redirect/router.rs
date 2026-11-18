@@ -28,10 +28,17 @@ pub struct RedirectDecision {
 }
 
 impl RedirectDecision {
-    fn allow() -> Self {
+    pub fn allow() -> Self {
         Self {
             action: RedirectAction::Allow,
             new_path: String::new(),
+        }
+    }
+
+    pub fn redirect(new_path: String) -> Self {
+        Self {
+            action: RedirectAction::Redirect,
+            new_path,
         }
     }
 
@@ -305,10 +312,7 @@ impl PathRouter {
             let map_ms = paths::monotonic_ms().saturating_sub(map_started_ms);
             self.stats.redirected.fetch_add(1, Ordering::Relaxed);
             log::debug!("map {} -> {}", resolved, mapped);
-            let decision = RedirectDecision {
-                action: RedirectAction::Redirect,
-                new_path: mapped,
-            };
+            let decision = RedirectDecision::redirect(mapped);
             log_router_perf(
                 "mapping",
                 original_path,
@@ -338,10 +342,7 @@ impl PathRouter {
                 if should_log_step(hit, REDIRECT_LOG_STEP) {
                     log::debug!("excl redirect count={} {} -> {}", hit, resolved, redirected);
                 }
-                let decision = RedirectDecision {
-                    action: RedirectAction::Redirect,
-                    new_path: redirected,
-                };
+                let decision = RedirectDecision::redirect(redirected);
                 log_router_perf(
                     "excluded",
                     original_path,
@@ -411,10 +412,7 @@ impl PathRouter {
         if should_log_step(hit, REDIRECT_LOG_STEP) {
             log::debug!("redirect count={} {} -> {}", hit, resolved, redirected);
         }
-        let decision = RedirectDecision {
-            action: RedirectAction::Redirect,
-            new_path: redirected,
-        };
+        let decision = RedirectDecision::redirect(redirected);
         log_router_perf(
             "fallback",
             original_path,

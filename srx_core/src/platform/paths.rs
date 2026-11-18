@@ -284,6 +284,23 @@ pub fn is_unmountable_android_path(path: &str) -> bool {
     )
 }
 
+const STORAGE_PREFIX: &str = "/storage/emulated/";
+const DATA_MEDIA_PREFIX: &str = "/data/media/";
+
+pub fn data_media_to_storage_path(path: &str) -> String {
+    match path.strip_prefix(DATA_MEDIA_PREFIX) {
+        Some(suffix) => format!("{}{}", STORAGE_PREFIX, suffix),
+        None => path.to_string(),
+    }
+}
+
+pub fn storage_to_data_media_path(path: &str) -> String {
+    match path.strip_prefix(STORAGE_PREFIX) {
+        Some(suffix) => format!("{}{}", DATA_MEDIA_PREFIX, suffix),
+        None => path.to_string(),
+    }
+}
+
 pub fn is_absolute(path: &str) -> bool {
     !path.is_empty() && path.starts_with('/')
 }

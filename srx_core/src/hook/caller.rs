@@ -6,6 +6,7 @@ pub use binder::capture_binder_caller_uid_if_available;
 
 use super::context;
 use super::stats::InterceptHub;
+use crate::platform::ANDROID_APP_UID_START;
 use binder::{
     is_likely_binder_thread_cached, resolve_caller_pid_by_binder, resolve_caller_uid_by_binder,
 };
@@ -13,7 +14,6 @@ use libc::{getpid, getuid};
 use package::{resolve_caller_package_by_pid, resolve_caller_package_by_uid};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-pub(super) const ANDROID_APP_UID_START: i32 = 10000;
 const FUSE_CALLER_MAX_AGE_MS: i64 = 1500;
 const BINDER_SAVED_CALLER_MAX_AGE_MS: i64 = 1500;
 const BINDER_SAVED_CALLER_HARD_LIMIT_MS: i64 = 30_000;

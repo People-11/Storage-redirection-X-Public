@@ -1,13 +1,9 @@
 use crate::config::SettingsHub;
 use crate::domain::PathMapping;
-use crate::platform::{self, paths};
+use crate::platform::{self, ANDROID_APP_UID_START, paths};
 use crate::redirect::policy;
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
-
-pub const ANDROID_APP_UID_START: i32 = 10000;
-const DATA_MEDIA_PREFIX: &str = "/data/media/";
-const STORAGE_PREFIX: &str = "/storage/emulated/";
 
 pub enum CallerRealPathMatch {
     None,
@@ -15,20 +11,6 @@ pub enum CallerRealPathMatch {
     // 只读目录：代写的写入落沙盒，读取仍走真实路径
     ReadOnly,
     Allowed,
-}
-
-pub fn data_media_to_storage_path(path: &str) -> String {
-    if !paths::starts_with(path, DATA_MEDIA_PREFIX) {
-        return path.to_string();
-    }
-    format!("{}{}", STORAGE_PREFIX, &path[DATA_MEDIA_PREFIX.len()..])
-}
-
-pub fn storage_to_data_media_path(path: &str) -> String {
-    if !paths::starts_with(path, STORAGE_PREFIX) {
-        return path.to_string();
-    }
-    format!("{}{}", DATA_MEDIA_PREFIX, &path[STORAGE_PREFIX.len()..])
 }
 
 pub fn get_caller_mappings(caller_package: &str, caller_uid: i32) -> Vec<PathMapping> {

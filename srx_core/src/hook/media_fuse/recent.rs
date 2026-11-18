@@ -1,9 +1,8 @@
-use super::ANDROID_APP_UID_START;
 use super::resolve::{
     is_private_owner_sqlite_caller_package, resolve_caller_packages_with_explicit,
     resolve_private_owner_sqlite_path,
 };
-use crate::platform::{self, paths};
+use crate::platform::{self, ANDROID_APP_UID_START, paths};
 use once_cell::sync::Lazy;
 use std::collections::VecDeque;
 use std::sync::Mutex;

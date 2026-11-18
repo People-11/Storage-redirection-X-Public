@@ -4,7 +4,6 @@ mod recent;
 mod resolve;
 mod sidecar;
 
-const ANDROID_APP_UID_START: i32 = 10000;
 const SQLITE_SHM_MIN_SIZE: libc::off_t = 32 * 1024;
 
 pub use access::{
