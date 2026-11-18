@@ -147,6 +147,16 @@ impl SettingsHub {
         false
     }
 
+    pub fn has_any_path_mappings(&self) -> bool {
+        let state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+        state.is_loaded
+            && state.apps.values().any(|app| {
+                app.user_profiles
+                    .values()
+                    .any(|user| user.is_enabled && !user.path_mappings.is_empty())
+            })
+    }
+
     pub fn get_app_count(&self) -> usize {
         let state = self.state.lock().unwrap_or_else(|err| err.into_inner());
         state.apps.len()

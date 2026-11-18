@@ -2,7 +2,7 @@ use crate::config::SettingsHub;
 use crate::domain::PathMapping;
 use crate::platform::{self, paths};
 use crate::redirect::policy;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 
 pub const ANDROID_APP_UID_START: i32 = 10000;
@@ -46,6 +46,21 @@ pub fn get_caller_mappings(caller_package: &str, caller_uid: i32) -> Vec<PathMap
         cache.config_version = config_version;
         cache.mappings = build_caller_mappings(caller_package, caller_uid);
         cache.mappings.clone()
+    })
+}
+
+// 按配置版本缓存，避免代写查询热路径反复加锁扫描配置
+pub fn has_any_caller_mappings() -> bool {
+    ANY_MAPPING_CACHE.with(|cache| {
+        let config = SettingsHub::instance();
+        let config_version = config.config_version();
+        let (cached_version, has_mappings) = cache.get();
+        if cached_version == Some(config_version) {
+            return has_mappings;
+        }
+        let has_mappings = config.has_any_path_mappings();
+        cache.set((Some(config_version), has_mappings));
+        has_mappings
     })
 }
 
@@ -453,6 +468,7 @@ struct CallerAllowedCache {
 }
 
 thread_local! {
+    static ANY_MAPPING_CACHE: Cell<(Option<u64>, bool)> = const { Cell::new((None, false)) };
     static CALLER_MAPPING_CACHE: RefCell<CallerMappingCache> = const { RefCell::new(CallerMappingCache {
         package_name: String::new(),
         caller_uid: -1,

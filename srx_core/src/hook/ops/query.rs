@@ -3,7 +3,10 @@ use super::super::runtime;
 use super::super::stats::InterceptHub;
 use super::super::util::c_str_to_string;
 use super::super::{caller, diagnostic};
-use crate::redirect::{policy, process_redirect_path, record_redirect_hit};
+use crate::redirect::{
+    get_caller_mappings, has_any_caller_mappings, policy, process_redirect_path,
+    record_redirect_hit, resolve_system_writer_mapped_path,
+};
 use libc::{c_char, c_int, c_uint, c_void};
 use std::ffi::CString;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -28,7 +31,7 @@ fn should_bypass_system_writer_query(hub: &InterceptHub, op_name: &str) -> bool 
     true
 }
 
-// 代写查询优先真实路径；真实路径不存在时回落到写入重定向目标，
+// 代写查询默认优先真实路径，真实路径不存在时回落到写入重定向目标，
 // 与代写 mkdir/创建落入沙盒保持一致，避免 MediaProvider mkdirs 后 exists() 仍为 false
 fn query_with_system_writer_fallback<F>(
     hub: &InterceptHub,
@@ -39,13 +42,22 @@ fn query_with_system_writer_fallback<F>(
 where
     F: Fn(*const c_char) -> c_int,
 {
-    let result = call_original(pathname);
-    if result == 0 || pathname.is_null() || unsafe { *libc::__errno() } != libc::ENOENT {
+    if pathname.is_null() {
+        return call_original(pathname);
+    }
+    let path_text = unsafe { c_str_to_string(pathname) };
+    if !path_utils::is_relevant_storage_path(&path_text) {
+        return call_original(pathname);
+    }
+
+    if let Some(result) =
+        query_mapped_path_first(hub, op_name, pathname, &path_text, &call_original)
+    {
         return result;
     }
 
-    let path_text = unsafe { c_str_to_string(pathname) };
-    if !path_utils::is_relevant_storage_path(&path_text) {
+    let result = call_original(pathname);
+    if result == 0 || unsafe { *libc::__errno() } != libc::ENOENT {
         return result;
     }
 
@@ -62,6 +74,38 @@ where
 
     unsafe { *libc::__errno() = libc::ENOENT };
     result
+}
+
+// 映射即路径替换：命中调用方映射时先查映射目标，MediaProvider 的同名检查才与实际写入位置一致；
+// 目标不存在再查真实路径。调用方未配置映射时返回 None，不增加决策开销
+fn query_mapped_path_first<F>(
+    hub: &InterceptHub,
+    op_name: &str,
+    pathname: *const c_char,
+    path_text: &str,
+    call_original: &F,
+) -> Option<c_int>
+where
+    F: Fn(*const c_char) -> c_int,
+{
+    if !has_any_caller_mappings() {
+        return None;
+    }
+    caller::update_caller_package_for_current_thread(hub);
+    let caller_package = hub.get_current_caller_package();
+    if caller_package.is_empty()
+        || get_caller_mappings(&caller_package, hub.get_current_caller_uid()).is_empty()
+    {
+        return None;
+    }
+
+    let mapped_path = resolve_system_writer_mapped_path(hub, path_text)?;
+    let c_mapped = CString::new(mapped_path.as_str()).ok()?;
+    if call_original(c_mapped.as_ptr()) == 0 {
+        record_redirect_hit(hub, op_name, path_text, &mapped_path);
+        return Some(0);
+    }
+    Some(call_original(pathname))
 }
 
 pub unsafe extern "C" fn hooked_stat(pathname: *const c_char, statbuf: *mut libc::stat) -> c_int {

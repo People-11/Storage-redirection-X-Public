@@ -15,6 +15,7 @@ const WRITER_ALLOWED_LOG_STEP: u64 = 256;
 static WRITER_ALLOWED_LOG_COUNT: AtomicU64 = AtomicU64::new(0);
 
 // 系统代写进程的重定向流水线：按阶段推进，任一阶段命中即经 finish 统一记录后退出
+// 返回值第二项表示决策是否来自调用方映射
 pub(super) fn run(
     hub: &InterceptHub,
     pathname: &str,
@@ -22,16 +23,17 @@ pub(super) fn run(
     self_uid: i32,
     is_shared_uid: bool,
     perf_started_ms: i64,
-) -> RedirectDecision {
-    WriterFlow::new(
+) -> (RedirectDecision, bool) {
+    let mut flow = WriterFlow::new(
         hub,
         pathname,
         package_name,
         self_uid,
         is_shared_uid,
         perf_started_ms,
-    )
-    .execute()
+    );
+    let decision = flow.execute();
+    (decision, flow.is_mapping_hit)
 }
 
 struct WriterFlow<'a> {
@@ -53,6 +55,7 @@ struct WriterFlow<'a> {
     caller_mappings: Vec<PathMapping>,
     mapped_path: String,
     redirect_target: String,
+    is_mapping_hit: bool,
     fallback_started_ms: i64,
     reload_ms: i64,
     caller_ms: i64,
@@ -90,6 +93,7 @@ impl<'a> WriterFlow<'a> {
             caller_mappings: Vec::new(),
             mapped_path: String::new(),
             redirect_target: String::new(),
+            is_mapping_hit: false,
             fallback_started_ms: 0,
             reload_ms: 0,
             caller_ms: 0,
@@ -315,6 +319,7 @@ impl<'a> WriterFlow<'a> {
             action: RedirectAction::Redirect,
             new_path,
         };
+        self.is_mapping_hit = true;
         Some(self.finish("mapping", decision, true))
     }
 
