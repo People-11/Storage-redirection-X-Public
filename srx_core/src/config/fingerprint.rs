@@ -86,10 +86,7 @@ pub fn should_log_config_summary_once(config_dir: &str) -> bool {
         unsafe { libc::close(fd) };
         return true;
     }
-    if last_errno() == libc::EEXIST {
-        return false;
-    }
-    true
+    last_errno() != libc::EEXIST
 }
 
 fn add_file_stat(mut hash: u64, path: &str) -> u64 {
