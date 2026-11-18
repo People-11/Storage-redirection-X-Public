@@ -110,31 +110,21 @@ where
 
 pub unsafe extern "C" fn hooked_stat(pathname: *const c_char, statbuf: *mut libc::stat) -> c_int {
     let self_ptr = hooked_stat as *mut c_void;
+    let call_with_path = |final_path: *const c_char| {
+        runtime::call_prev(
+            self_ptr,
+            || libc::stat(final_path, statbuf),
+            |prev| {
+                let f: unsafe extern "C" fn(*const c_char, *mut libc::stat) -> c_int =
+                    std::mem::transmute(prev);
+                f(final_path, statbuf)
+            },
+        )
+    };
     runtime::with_hook_guard(
-        || {
-            runtime::call_prev(
-                self_ptr,
-                || libc::stat(pathname, statbuf),
-                |prev| {
-                    let f: unsafe extern "C" fn(*const c_char, *mut libc::stat) -> c_int =
-                        std::mem::transmute(prev);
-                    f(pathname, statbuf)
-                },
-            )
-        },
+        || call_with_path(pathname),
         |hub| {
             hub.increment_stat_calls();
-            let call_with_path = |final_path: *const c_char| {
-                runtime::call_prev(
-                    self_ptr,
-                    || libc::stat(final_path, statbuf),
-                    |prev| {
-                        let f: unsafe extern "C" fn(*const c_char, *mut libc::stat) -> c_int =
-                            std::mem::transmute(prev);
-                        f(final_path, statbuf)
-                    },
-                )
-            };
             if should_bypass_system_writer_query(hub, "stat") {
                 return query_with_system_writer_fallback(hub, "stat", pathname, call_with_path);
             }
@@ -145,31 +135,21 @@ pub unsafe extern "C" fn hooked_stat(pathname: *const c_char, statbuf: *mut libc
 
 pub unsafe extern "C" fn hooked_lstat(pathname: *const c_char, statbuf: *mut libc::stat) -> c_int {
     let self_ptr = hooked_lstat as *mut c_void;
+    let call_with_path = |final_path: *const c_char| {
+        runtime::call_prev(
+            self_ptr,
+            || libc::lstat(final_path, statbuf),
+            |prev| {
+                let f: unsafe extern "C" fn(*const c_char, *mut libc::stat) -> c_int =
+                    std::mem::transmute(prev);
+                f(final_path, statbuf)
+            },
+        )
+    };
     runtime::with_hook_guard(
-        || {
-            runtime::call_prev(
-                self_ptr,
-                || libc::lstat(pathname, statbuf),
-                |prev| {
-                    let f: unsafe extern "C" fn(*const c_char, *mut libc::stat) -> c_int =
-                        std::mem::transmute(prev);
-                    f(pathname, statbuf)
-                },
-            )
-        },
+        || call_with_path(pathname),
         |hub| {
             hub.increment_stat_calls();
-            let call_with_path = |final_path: *const c_char| {
-                runtime::call_prev(
-                    self_ptr,
-                    || libc::lstat(final_path, statbuf),
-                    |prev| {
-                        let f: unsafe extern "C" fn(*const c_char, *mut libc::stat) -> c_int =
-                            std::mem::transmute(prev);
-                        f(final_path, statbuf)
-                    },
-                )
-            };
             if should_bypass_system_writer_query(hub, "lstat") {
                 return query_with_system_writer_fallback(hub, "lstat", pathname, call_with_path);
             }
@@ -185,39 +165,21 @@ pub unsafe extern "C" fn hooked_fstatat(
     flags: c_int,
 ) -> c_int {
     let self_ptr = hooked_fstatat as *mut c_void;
+    let call_with_path = |final_path: *const c_char| {
+        runtime::call_prev(
+            self_ptr,
+            || libc::fstatat(dirfd, final_path, statbuf, flags),
+            |prev| {
+                let f: unsafe extern "C" fn(c_int, *const c_char, *mut libc::stat, c_int) -> c_int =
+                    std::mem::transmute(prev);
+                f(dirfd, final_path, statbuf, flags)
+            },
+        )
+    };
     runtime::with_hook_guard(
-        || {
-            runtime::call_prev(
-                self_ptr,
-                || libc::fstatat(dirfd, pathname, statbuf, flags),
-                |prev| {
-                    let f: unsafe extern "C" fn(
-                        c_int,
-                        *const c_char,
-                        *mut libc::stat,
-                        c_int,
-                    ) -> c_int = std::mem::transmute(prev);
-                    f(dirfd, pathname, statbuf, flags)
-                },
-            )
-        },
+        || call_with_path(pathname),
         |hub| {
             hub.increment_stat_calls();
-            let call_with_path = |final_path: *const c_char| {
-                runtime::call_prev(
-                    self_ptr,
-                    || libc::fstatat(dirfd, final_path, statbuf, flags),
-                    |prev| {
-                        let f: unsafe extern "C" fn(
-                            c_int,
-                            *const c_char,
-                            *mut libc::stat,
-                            c_int,
-                        ) -> c_int = std::mem::transmute(prev);
-                        f(dirfd, final_path, statbuf, flags)
-                    },
-                )
-            };
             if should_bypass_system_writer_query(hub, "fstatat") {
                 return query_with_system_writer_fallback(hub, "fstatat", pathname, call_with_path);
             }
@@ -228,31 +190,21 @@ pub unsafe extern "C" fn hooked_fstatat(
 
 pub unsafe extern "C" fn hooked_access(pathname: *const c_char, mode: c_int) -> c_int {
     let self_ptr = hooked_access as *mut c_void;
+    let call_with_path = |final_path: *const c_char| {
+        runtime::call_prev(
+            self_ptr,
+            || libc::access(final_path, mode),
+            |prev| {
+                let f: unsafe extern "C" fn(*const c_char, c_int) -> c_int =
+                    std::mem::transmute(prev);
+                f(final_path, mode)
+            },
+        )
+    };
     runtime::with_hook_guard(
-        || {
-            runtime::call_prev(
-                self_ptr,
-                || libc::access(pathname, mode),
-                |prev| {
-                    let f: unsafe extern "C" fn(*const c_char, c_int) -> c_int =
-                        std::mem::transmute(prev);
-                    f(pathname, mode)
-                },
-            )
-        },
+        || call_with_path(pathname),
         |hub| {
             hub.increment_access_calls();
-            let call_with_path = |final_path: *const c_char| {
-                runtime::call_prev(
-                    self_ptr,
-                    || libc::access(final_path, mode),
-                    |prev| {
-                        let f: unsafe extern "C" fn(*const c_char, c_int) -> c_int =
-                            std::mem::transmute(prev);
-                        f(final_path, mode)
-                    },
-                )
-            };
             if should_bypass_system_writer_query(hub, "access") {
                 return query_with_system_writer_fallback(hub, "access", pathname, call_with_path);
             }
@@ -268,31 +220,21 @@ pub unsafe extern "C" fn hooked_faccessat(
     flags: c_int,
 ) -> c_int {
     let self_ptr = hooked_faccessat as *mut c_void;
+    let call_with_path = |final_path: *const c_char| {
+        runtime::call_prev(
+            self_ptr,
+            || libc::faccessat(dirfd, final_path, mode, flags),
+            |prev| {
+                let f: unsafe extern "C" fn(c_int, *const c_char, c_int, c_int) -> c_int =
+                    std::mem::transmute(prev);
+                f(dirfd, final_path, mode, flags)
+            },
+        )
+    };
     runtime::with_hook_guard(
-        || {
-            runtime::call_prev(
-                self_ptr,
-                || libc::faccessat(dirfd, pathname, mode, flags),
-                |prev| {
-                    let f: unsafe extern "C" fn(c_int, *const c_char, c_int, c_int) -> c_int =
-                        std::mem::transmute(prev);
-                    f(dirfd, pathname, mode, flags)
-                },
-            )
-        },
+        || call_with_path(pathname),
         |hub| {
             hub.increment_access_calls();
-            let call_with_path = |final_path: *const c_char| {
-                runtime::call_prev(
-                    self_ptr,
-                    || libc::faccessat(dirfd, final_path, mode, flags),
-                    |prev| {
-                        let f: unsafe extern "C" fn(c_int, *const c_char, c_int, c_int) -> c_int =
-                            std::mem::transmute(prev);
-                        f(dirfd, final_path, mode, flags)
-                    },
-                )
-            };
             if should_bypass_system_writer_query(hub, "faccessat") {
                 return query_with_system_writer_fallback(
                     hub,
@@ -314,41 +256,26 @@ pub unsafe extern "C" fn hooked_statx(
     statxbuf: *mut libc::statx,
 ) -> c_int {
     let self_ptr = hooked_statx as *mut c_void;
+    let call_with_path = |final_path: *const c_char| {
+        runtime::call_prev(
+            self_ptr,
+            || libc::statx(dirfd, final_path, flags, mask, statxbuf),
+            |prev| {
+                let f: unsafe extern "C" fn(
+                    c_int,
+                    *const c_char,
+                    c_int,
+                    c_uint,
+                    *mut libc::statx,
+                ) -> c_int = std::mem::transmute(prev);
+                f(dirfd, final_path, flags, mask, statxbuf)
+            },
+        )
+    };
     runtime::with_hook_guard(
-        || {
-            runtime::call_prev(
-                self_ptr,
-                || libc::statx(dirfd, pathname, flags, mask, statxbuf),
-                |prev| {
-                    let f: unsafe extern "C" fn(
-                        c_int,
-                        *const c_char,
-                        c_int,
-                        c_uint,
-                        *mut libc::statx,
-                    ) -> c_int = std::mem::transmute(prev);
-                    f(dirfd, pathname, flags, mask, statxbuf)
-                },
-            )
-        },
+        || call_with_path(pathname),
         |hub| {
             hub.increment_stat_calls();
-            let call_with_path = |final_path: *const c_char| {
-                runtime::call_prev(
-                    self_ptr,
-                    || libc::statx(dirfd, final_path, flags, mask, statxbuf),
-                    |prev| {
-                        let f: unsafe extern "C" fn(
-                            c_int,
-                            *const c_char,
-                            c_int,
-                            c_uint,
-                            *mut libc::statx,
-                        ) -> c_int = std::mem::transmute(prev);
-                        f(dirfd, final_path, flags, mask, statxbuf)
-                    },
-                )
-            };
             if should_bypass_system_writer_query(hub, "statx") {
                 return query_with_system_writer_fallback(hub, "statx", pathname, call_with_path);
             }
@@ -359,42 +286,25 @@ pub unsafe extern "C" fn hooked_statx(
 
 pub unsafe extern "C" fn hooked_opendir(name: *const c_char) -> *mut libc::DIR {
     let self_ptr = hooked_opendir as *mut c_void;
+    let call_with_path = |final_path: *const c_char| {
+        runtime::call_prev(
+            self_ptr,
+            || libc::opendir(final_path),
+            |prev| {
+                let f: unsafe extern "C" fn(*const c_char) -> *mut libc::DIR =
+                    std::mem::transmute(prev);
+                f(final_path)
+            },
+        )
+    };
     runtime::with_hook_guard(
-        || {
-            runtime::call_prev(
-                self_ptr,
-                || libc::opendir(name),
-                |prev| {
-                    let f: unsafe extern "C" fn(*const c_char) -> *mut libc::DIR =
-                        std::mem::transmute(prev);
-                    f(name)
-                },
-            )
-        },
+        || call_with_path(name),
         |hub| {
             hub.increment_opendir_calls();
             if should_bypass_system_writer_query(hub, "opendir") {
-                return runtime::call_prev(
-                    self_ptr,
-                    || libc::opendir(name),
-                    |prev| {
-                        let f: unsafe extern "C" fn(*const c_char) -> *mut libc::DIR =
-                            std::mem::transmute(prev);
-                        f(name)
-                    },
-                );
+                return call_with_path(name);
             }
-            runtime::with_redirected_path(hub, "opendir", name, |final_path| {
-                runtime::call_prev(
-                    self_ptr,
-                    || libc::opendir(final_path),
-                    |prev| {
-                        let f: unsafe extern "C" fn(*const c_char) -> *mut libc::DIR =
-                            std::mem::transmute(prev);
-                        f(final_path)
-                    },
-                )
-            })
+            runtime::with_redirected_path(hub, "opendir", name, call_with_path)
         },
     )
 }
@@ -405,42 +315,25 @@ pub unsafe extern "C" fn hooked_readlink(
     bufsiz: usize,
 ) -> isize {
     let self_ptr = hooked_readlink as *mut c_void;
+    let call_with_path = |final_path: *const c_char| {
+        runtime::call_prev(
+            self_ptr,
+            || libc::readlink(final_path, buf, bufsiz),
+            |prev| {
+                let f: unsafe extern "C" fn(*const c_char, *mut c_char, usize) -> isize =
+                    std::mem::transmute(prev);
+                f(final_path, buf, bufsiz)
+            },
+        )
+    };
     runtime::with_hook_guard(
-        || {
-            runtime::call_prev(
-                self_ptr,
-                || libc::readlink(pathname, buf, bufsiz),
-                |prev| {
-                    let f: unsafe extern "C" fn(*const c_char, *mut c_char, usize) -> isize =
-                        std::mem::transmute(prev);
-                    f(pathname, buf, bufsiz)
-                },
-            )
-        },
+        || call_with_path(pathname),
         |hub| {
             hub.increment_readlink_calls();
             if should_bypass_system_writer_query(hub, "readlink") {
-                return runtime::call_prev(
-                    self_ptr,
-                    || libc::readlink(pathname, buf, bufsiz),
-                    |prev| {
-                        let f: unsafe extern "C" fn(*const c_char, *mut c_char, usize) -> isize =
-                            std::mem::transmute(prev);
-                        f(pathname, buf, bufsiz)
-                    },
-                );
+                return call_with_path(pathname);
             }
-            runtime::with_redirected_path(hub, "readlink", pathname, |final_path| {
-                runtime::call_prev(
-                    self_ptr,
-                    || libc::readlink(final_path, buf, bufsiz),
-                    |prev| {
-                        let f: unsafe extern "C" fn(*const c_char, *mut c_char, usize) -> isize =
-                            std::mem::transmute(prev);
-                        f(final_path, buf, bufsiz)
-                    },
-                )
-            })
+            runtime::with_redirected_path(hub, "readlink", pathname, call_with_path)
         },
     )
 }
