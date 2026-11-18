@@ -9,35 +9,26 @@ use std::ffi::CString;
 
 pub unsafe extern "C" fn hooked_mkdir(pathname: *const c_char, mode: mode_t) -> c_int {
     let self_ptr = hooked_mkdir as *mut c_void;
+    let call_with_path = |final_path: *const c_char| {
+        runtime::call_prev(
+            self_ptr,
+            || libc::mkdir(final_path, mode),
+            |prev| {
+                let f: unsafe extern "C" fn(*const c_char, mode_t) -> c_int =
+                    std::mem::transmute(prev);
+                f(final_path, mode)
+            },
+        )
+    };
     runtime::with_hook_guard(
-        || {
-            runtime::call_prev(
-                self_ptr,
-                || libc::mkdir(pathname, mode),
-                |prev| {
-                    let f: unsafe extern "C" fn(*const c_char, mode_t) -> c_int =
-                        std::mem::transmute(prev);
-                    f(pathname, mode)
-                },
-            )
-        },
+        || call_with_path(pathname),
         |hub| {
             hub.increment_mkdir_calls();
             if runtime::should_resolve_caller_context(hub) {
                 crate::hook::caller::update_caller_package_for_current_thread(hub);
             }
 
-            handle_mkdir_like(hub, "mkdir", AT_FDCWD, pathname, mode, |call_path| {
-                runtime::call_prev(
-                    self_ptr,
-                    || libc::mkdir(call_path, mode),
-                    |prev| {
-                        let f: unsafe extern "C" fn(*const c_char, mode_t) -> c_int =
-                            std::mem::transmute(prev);
-                        f(call_path, mode)
-                    },
-                )
-            })
+            handle_mkdir_like(hub, "mkdir", AT_FDCWD, pathname, mode, call_with_path)
         },
     )
 }
@@ -48,69 +39,51 @@ pub unsafe extern "C" fn hooked_mkdirat(
     mode: mode_t,
 ) -> c_int {
     let self_ptr = hooked_mkdirat as *mut c_void;
+    let call_with_path = |final_path: *const c_char| {
+        runtime::call_prev(
+            self_ptr,
+            || libc::mkdirat(dirfd, final_path, mode),
+            |prev| {
+                let f: unsafe extern "C" fn(c_int, *const c_char, mode_t) -> c_int =
+                    std::mem::transmute(prev);
+                f(dirfd, final_path, mode)
+            },
+        )
+    };
     runtime::with_hook_guard(
-        || {
-            runtime::call_prev(
-                self_ptr,
-                || libc::mkdirat(dirfd, pathname, mode),
-                |prev| {
-                    let f: unsafe extern "C" fn(c_int, *const c_char, mode_t) -> c_int =
-                        std::mem::transmute(prev);
-                    f(dirfd, pathname, mode)
-                },
-            )
-        },
+        || call_with_path(pathname),
         |hub| {
             hub.increment_mkdir_calls();
             if runtime::should_resolve_caller_context(hub) {
                 crate::hook::caller::update_caller_package_for_current_thread(hub);
             }
 
-            handle_mkdir_like(hub, "mkdirat", dirfd, pathname, mode, |call_path| {
-                runtime::call_prev(
-                    self_ptr,
-                    || libc::mkdirat(dirfd, call_path, mode),
-                    |prev| {
-                        let f: unsafe extern "C" fn(c_int, *const c_char, mode_t) -> c_int =
-                            std::mem::transmute(prev);
-                        f(dirfd, call_path, mode)
-                    },
-                )
-            })
+            handle_mkdir_like(hub, "mkdirat", dirfd, pathname, mode, call_with_path)
         },
     )
 }
 
 pub unsafe extern "C" fn hooked_unlink(pathname: *const c_char) -> c_int {
     let self_ptr = hooked_unlink as *mut c_void;
+    let call_with_path = |final_path: *const c_char| {
+        runtime::call_prev(
+            self_ptr,
+            || libc::unlink(final_path),
+            |prev| {
+                let f: unsafe extern "C" fn(*const c_char) -> c_int = std::mem::transmute(prev);
+                f(final_path)
+            },
+        )
+    };
     runtime::with_hook_guard(
-        || {
-            runtime::call_prev(
-                self_ptr,
-                || libc::unlink(pathname),
-                |prev| {
-                    let f: unsafe extern "C" fn(*const c_char) -> c_int = std::mem::transmute(prev);
-                    f(pathname)
-                },
-            )
-        },
+        || call_with_path(pathname),
         |hub| {
             hub.increment_unlink_calls();
             if runtime::should_resolve_caller_context(hub) {
                 crate::hook::caller::update_caller_package_for_current_thread(hub);
             }
 
-            handle_unlink_like(hub, "unlink", AT_FDCWD, pathname, -1, false, |call_path| {
-                runtime::call_prev(
-                    self_ptr,
-                    || libc::unlink(call_path),
-                    |prev| {
-                        let f: unsafe extern "C" fn(*const c_char) -> c_int =
-                            std::mem::transmute(prev);
-                        f(call_path)
-                    },
-                )
-            })
+            handle_unlink_like(hub, "unlink", AT_FDCWD, pathname, -1, false, call_with_path)
         },
     )
 }
