@@ -61,107 +61,61 @@ class SettingsViewModel(
             val hasRoot = RootService.isRootAvailable()
             _uiState.update { it.copy(hasRoot = hasRoot) }
             if (hasRoot) {
-                refreshFuseFixerEnabled()
+                val isFuseFixerEnabled = configRepo.readFuseFixerEnabled()
                 configRepo.readFileMonitorEnabled()
                 val retention = configRepo.readFileMonitorRetention()
-                _uiState.update { it.copy(fileMonitorRetentionSeconds = retention) }
+                _uiState.update {
+                    it.copy(isFuseFixerEnabled = isFuseFixerEnabled, fileMonitorRetentionSeconds = retention)
+                }
             }
         }
     }
 
-    fun refreshFuseFixerEnabled() {
-        viewModelScope.launch {
-            val isEnabled = configRepo.readFuseFixerEnabled()
-            _uiState.update { it.copy(isFuseFixerEnabled = isEnabled) }
-        }
+    fun exportPackageConfigsZip(contentResolver: ContentResolver, outputUri: Uri) = launchRootTask {
+        SettingsUiEvent.BackupFinished(backupRestoreRepo.exportPackageConfigsZip(contentResolver, outputUri))
     }
 
-    fun exportPackageConfigsZip(contentResolver: ContentResolver, outputUri: Uri) {
-        if (_uiState.value.hasRoot != true || _uiState.value.isWorking) {
-            return
-        }
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isWorking = true) }
-            val result = backupRestoreRepo.exportPackageConfigsZip(contentResolver, outputUri)
-            _uiState.update { it.copy(isWorking = false) }
-            _events.emit(SettingsUiEvent.BackupFinished(result))
-        }
+    fun restorePackageConfigs() = launchRootTask {
+        SettingsUiEvent.RestoreFinished(backupRestoreRepo.restorePackageConfigs())
     }
 
-    fun restorePackageConfigs() {
-        if (_uiState.value.hasRoot != true || _uiState.value.isWorking) {
-            return
-        }
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isWorking = true) }
-            val result = backupRestoreRepo.restorePackageConfigs()
-            _uiState.update { it.copy(isWorking = false) }
-            _events.emit(SettingsUiEvent.RestoreFinished(result))
-        }
+    fun restorePackageConfigsFromUri(contentResolver: ContentResolver, inputUri: Uri) = launchRootTask {
+        SettingsUiEvent.RestoreFinished(backupRestoreRepo.restorePackageConfigsFromUri(contentResolver, inputUri))
     }
 
-    fun restorePackageConfigsFromUri(contentResolver: ContentResolver, inputUri: Uri) {
-        if (_uiState.value.hasRoot != true || _uiState.value.isWorking) {
-            return
+    fun setFuseFixerEnabled(isEnabled: Boolean) = launchRootTask {
+        val previous = _uiState.value.isFuseFixerEnabled
+        _uiState.update { it.copy(isFuseFixerEnabled = isEnabled) }
+        val redirectApps = configRepo.load(0).redirectApps
+        val isSaved = configRepo.setFuseFixerEnabled(isEnabled)
+        if (isSaved) {
+            RootService.restartMediaProvider(redirectApps)
         }
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isWorking = true) }
-            val result = backupRestoreRepo.restorePackageConfigsFromUri(contentResolver, inputUri)
-            _uiState.update { it.copy(isWorking = false) }
-            _events.emit(SettingsUiEvent.RestoreFinished(result))
-        }
+        _uiState.update { it.copy(isFuseFixerEnabled = if (isSaved) isEnabled else previous) }
+        null
     }
 
-    fun setFuseFixerEnabled(isEnabled: Boolean) {
-        if (_uiState.value.hasRoot != true || _uiState.value.isWorking) {
-            return
-        }
-
-        viewModelScope.launch {
-            val previous = _uiState.value.isFuseFixerEnabled
-            _uiState.update { it.copy(isFuseFixerEnabled = isEnabled, isWorking = true) }
-            val redirectApps = configRepo.load(0).redirectApps
-            val isSaved = configRepo.setFuseFixerEnabled(isEnabled)
-            if (isSaved) {
-                RootService.restartMediaProvider(redirectApps)
-            }
-            _uiState.update {
-                it.copy(
-                    isFuseFixerEnabled = if (isSaved) isEnabled else previous,
-                    isWorking = false,
-                )
-            }
-        }
+    // 开关状态由 ConfigRepository.monitorEnabled 在保存成功后推送
+    fun setFileMonitorEnabled(isEnabled: Boolean) = launchRootTask {
+        if (!configRepo.setFileMonitorEnabled(isEnabled)) return@launchRootTask SettingsUiEvent.SaveFailed
+        if (!isEnabled) MonitorService.clear()
+        null
     }
 
-    fun setFileMonitorEnabled(isEnabled: Boolean) {
+    fun setFileMonitorRetention(seconds: Long) = launchRootTask {
+        if (!configRepo.setFileMonitorRetention(seconds)) return@launchRootTask SettingsUiEvent.SaveFailed
+        _uiState.update { it.copy(fileMonitorRetentionSeconds = seconds) }
+        null
+    }
+
+    // Root 操作串行执行：无 Root 或已有任务时忽略；任务结束清除忙碌状态后再发出它返回的事件
+    private fun launchRootTask(task: suspend () -> SettingsUiEvent?) {
         if (_uiState.value.hasRoot != true || _uiState.value.isWorking) return
         viewModelScope.launch {
             _uiState.update { it.copy(isWorking = true) }
-            val isSaved = configRepo.setFileMonitorEnabled(isEnabled)
-            if (isSaved && !isEnabled) {
-                MonitorService.clear()
-            }
+            val event = task()
             _uiState.update { it.copy(isWorking = false) }
-            if (!isSaved) _events.emit(SettingsUiEvent.SaveFailed)
-        }
-    }
-
-    fun setFileMonitorRetention(seconds: Long) {
-        if (_uiState.value.hasRoot != true || _uiState.value.isWorking) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isWorking = true) }
-            val isSaved = configRepo.setFileMonitorRetention(seconds)
-            _uiState.update {
-                it.copy(
-                    isWorking = false,
-                    fileMonitorRetentionSeconds = if (isSaved) seconds else it.fileMonitorRetentionSeconds,
-                )
-            }
-            if (!isSaved) _events.emit(SettingsUiEvent.SaveFailed)
+            event?.let { _events.emit(it) }
         }
     }
 }
