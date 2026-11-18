@@ -32,7 +32,6 @@ import com.storage.redirect.x.ui.icon.AppIcons
 import com.storage.redirect.x.data.model.PathValidationResult
 import com.storage.redirect.x.data.model.RedirectConfig
 import com.storage.redirect.x.data.model.RedirectTemplate
-import com.storage.redirect.x.data.model.StoragePathMapping
 import com.storage.redirect.x.data.repository.PathBrowserRepository
 import com.storage.redirect.x.data.repository.TemplateRepository
 import com.storage.redirect.x.ui.component.PageMessageState
@@ -239,10 +238,8 @@ private fun TemplateEditorPage(
     val pathBrowserRepo = remember { PathBrowserRepository() }
     val browseStack = rememberPageStack<TemplateBrowseTarget>()
 
-    val showMappingDialog = remember { mutableStateOf(false) }
-    var dialogMappingRequestPathInput by remember { mutableStateOf("") }
-    var dialogMappingFinalPathInput by remember { mutableStateOf("") }
-    var mappingDialogErrorResId by remember { mutableStateOf<Int?>(null) }
+    val mappingDialog = remember { MappingDialogState() }
+    val isBrowsing = !browseStack.isEmpty
 
     val showDeleteDialog = remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<TemplateDeleteTarget?>(null) }
@@ -257,27 +254,30 @@ private fun TemplateEditorPage(
     // 模板不属于某个用户，浏览当前用户的存储目录
     PageStackHost(
         stack = browseStack,
-        page = { _, onBrowserBack ->
+        page = { target, onBrowserBack ->
             PathBrowserPage(
                 browserRepository = pathBrowserRepo,
                 userId = android.os.Process.myUid() / PER_USER_UID_RANGE,
-                multiSelect = true,
-                allowExclude = true,
+                multiSelect = target == TemplateBrowseTarget.Path,
+                allowExclude = target == TemplateBrowseTarget.Path,
                 onBack = onBrowserBack,
-                onPathSelect = {},
-                onPathsSelect = { paths ->
-                    val validPaths = paths.mapNotNull { raw ->
-                        val validation = RedirectConfig.validateRealPathRule(raw)
-                        if (validation is PathValidationResult.Valid) validation.normalized else null
-                    }
-                    if (validPaths.isEmpty()) {
-                        Toast.makeText(context, R.string.rule_config_browser_invalid_path, Toast.LENGTH_SHORT).show()
-                    } else {
-                        val allowedPaths = currentTemplate.allowedRealPaths + validPaths
-                        updateTemplate(currentTemplate.copy(allowedRealPaths = allowedPaths))
-                        if (validPaths.size < paths.size) {
-                            Toast.makeText(context, R.string.rule_config_paths_partially_invalid, Toast.LENGTH_SHORT).show()
+                onConfirm = { paths ->
+                    if (target == TemplateBrowseTarget.Path) {
+                        val validPaths = paths.mapNotNull { raw ->
+                            val validation = RedirectConfig.validateRealPathRule(raw)
+                            if (validation is PathValidationResult.Valid) validation.normalized else null
                         }
+                        if (validPaths.isEmpty()) {
+                            Toast.makeText(context, R.string.rule_config_browser_invalid_path, Toast.LENGTH_SHORT).show()
+                        } else {
+                            val allowedPaths = currentTemplate.allowedRealPaths + validPaths
+                            updateTemplate(currentTemplate.copy(allowedRealPaths = allowedPaths))
+                            if (validPaths.size < paths.size) {
+                                Toast.makeText(context, R.string.rule_config_paths_partially_invalid, Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        mappingDialog.pick(paths.first(), isRequest = target == TemplateBrowseTarget.MappingCurrentPath)
                     }
                     onBrowserBack()
                 },
@@ -390,12 +390,7 @@ private fun TemplateEditorPage(
                             CardActionButton(
                                 icon = AppIcons.Add,
                                 text = stringResource(R.string.rule_config_add_mapping),
-                                onClick = {
-                                    dialogMappingRequestPathInput = ""
-                                    dialogMappingFinalPathInput = ""
-                                    mappingDialogErrorResId = null
-                                    showMappingDialog.value = true
-                                },
+                                onClick = mappingDialog::open,
                                 modifier = Modifier.testTag("template_add_mapping"),
                             )
                         }
@@ -448,69 +443,16 @@ private fun TemplateEditorPage(
         )
     }
 
-    WindowDialog(
-        show = showMappingDialog.value,
-        title = stringResource(R.string.rule_config_add_mapping),
-        summary = stringResource(R.string.rule_config_mapping_hint),
-        onDismissRequest = {
-            mappingDialogErrorResId = null
-            showMappingDialog.value = false
+    AddMappingDialog(
+        show = mappingDialog.isOpen && !isBrowsing,
+        state = mappingDialog,
+        onPickRequest = { browseStack.push(TemplateBrowseTarget.MappingCurrentPath) },
+        onPickFinal = { browseStack.push(TemplateBrowseTarget.MappingTargetPath) },
+        onConfirm = { mapping ->
+            updateTemplate(currentTemplate.copy(pathMappings = currentTemplate.pathMappings + mapping))
         },
-    ) {
-        RulePathField(
-            value = dialogMappingRequestPathInput,
-            onValueChange = {
-                dialogMappingRequestPathInput = it
-                mappingDialogErrorResId = null
-            },
-            label = stringResource(R.string.rule_config_mapping_request_path),
-            modifier = Modifier.testTag("template_mapping_request_input"),
-        )
-        MappingDirectionArrow()
-        RulePathField(
-            value = dialogMappingFinalPathInput,
-            onValueChange = {
-                dialogMappingFinalPathInput = it
-                mappingDialogErrorResId = null
-            },
-            label = stringResource(R.string.rule_config_mapping_final_path),
-            modifier = Modifier.testTag("template_mapping_final_input"),
-        )
-        mappingDialogErrorResId?.let { errorResId ->
-            Spacer(Modifier.height(TEMPLATE_DIALOG_FIELD_SPACING))
-            Text(
-                text = stringResource(errorResId),
-                color = MiuixTheme.colorScheme.error,
-                style = MiuixTheme.textStyles.body2,
-            )
-        }
-        Spacer(Modifier.height(TEMPLATE_DIALOG_BOTTOM_SPACING))
-        TemplateDialogButtonRow(
-            show = showMappingDialog,
-            confirmTag = "template_mapping_confirm",
-            cancelTag = "template_mapping_cancel",
-            onConfirm = {
-                val requestValidation = RedirectConfig.validateMappingPath(dialogMappingRequestPathInput)
-                if (requestValidation !is PathValidationResult.Valid) {
-                    mappingDialogErrorResId = resolvePathValidationErrorResId(requestValidation)
-                    return@TemplateDialogButtonRow false
-                }
-                val finalValidation = RedirectConfig.validateMappingPath(dialogMappingFinalPathInput)
-                if (finalValidation !is PathValidationResult.Valid) {
-                    mappingDialogErrorResId = resolvePathValidationErrorResId(finalValidation)
-                    return@TemplateDialogButtonRow false
-                }
-                if (requestValidation.normalized == finalValidation.normalized) {
-                    mappingDialogErrorResId = R.string.rule_config_error_same_paths
-                    return@TemplateDialogButtonRow false
-                }
-
-                val mapping = StoragePathMapping(requestValidation.normalized, finalValidation.normalized)
-                updateTemplate(currentTemplate.copy(pathMappings = currentTemplate.pathMappings + mapping))
-                true
-            },
-        )
-    }
+        tagPrefix = "template_mapping",
+    )
 
     val isDeletePath = deleteTarget is TemplateDeleteTarget.Path
     WindowDialog(
@@ -650,4 +592,6 @@ private const val PER_USER_UID_RANGE = 100000
 
 private enum class TemplateBrowseTarget {
     Path,
+    MappingCurrentPath,
+    MappingTargetPath,
 }

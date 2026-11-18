@@ -18,7 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -108,7 +107,7 @@ private fun BrowserEmptyState(state: PathBrowserState, topPadding: Dp, bottomPad
             when {
                 state.hasLoadError -> BrowserButton(stringResource(R.string.common_retry), { state.reloadKey++ })
                 state.query.isNotBlank() -> BrowserButton(stringResource(R.string.browser_clear_search), { state.query = "" })
-                state.multiSelect && state.canSelect(state.currentPath) &&
+                state.canSelect(state.currentPath) &&
                     state.selectionOf(state.currentPath) != DirectorySelection.Covered -> BrowserButton(
                     stringResource(
                         if (state.currentPath in state.selectedPaths) R.string.browser_deselect_current
@@ -125,8 +124,7 @@ private fun BrowserEmptyState(state: PathBrowserState, topPadding: Dp, bottomPad
 @Composable
 private fun BrowserDirectoryRow(state: PathBrowserState, path: String, isFirst: Boolean, isLast: Boolean) {
     val colors = browserColors()
-    val isSelected = state.multiSelect && state.selectionOf(path) == DirectorySelection.Selected
-    val isEnabled = state.canSelect(path)
+    val isSelected = state.selectionOf(path) == DirectorySelection.Selected
     val top = if (isFirst) DIRECTORY_GROUP_CORNER_RADIUS else 0.dp
     val bottom = if (isLast) DIRECTORY_GROUP_CORNER_RADIUS else 0.dp
     Box(
@@ -144,7 +142,7 @@ private fun BrowserDirectoryRow(state: PathBrowserState, path: String, isFirst: 
             cornerRadius = 12.dp,
             insideMargin = PaddingValues(0.dp),
             colors = CardDefaults.defaultColors(color = if (isSelected) state.selectedRowColor() else colors.surface),
-            onClick = if (isEnabled) ({ state.navigateTo(path) }) else null,
+            onClick = { state.navigateTo(path) },
             pressFeedbackType = PressFeedbackType.Sink,
             showIndication = true,
         ) {
@@ -158,44 +156,40 @@ private fun BrowserDirectoryRow(state: PathBrowserState, path: String, isFirst: 
             ) {
                 Icon(
                     AppIcons.Folder, null,
-                    Modifier.size(DIRECTORY_ICON_SIZE).alpha(if (isEnabled) 1f else 0.5f),
+                    Modifier.size(DIRECTORY_ICON_SIZE),
                     tint = if (isSelected) state.accentColor() else colors.summary,
                 )
                 Text(
                     text = highlightQuery(path.substringAfterLast('/'), state.query, state.accentColor()),
-                    modifier = Modifier.weight(1f).alpha(if (isEnabled) 1f else 0.5f),
+                    modifier = Modifier.weight(1f),
                     color = colors.text,
                     fontSize = 16.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                DirectoryTrailing(state, path, isEnabled)
+                DirectoryTrailing(state, path)
             }
         }
     }
 }
 
+// 受限目录显示锁且不可勾选，整行仍可点进去浏览；始终放行的目录显示为灰色已选
 @Composable
-private fun DirectoryTrailing(state: PathBrowserState, path: String, isEnabled: Boolean) {
-    if (!isEnabled) {
+private fun DirectoryTrailing(state: PathBrowserState, path: String) {
+    val selection = state.selectionOf(path)
+    if (selection != DirectorySelection.Covered && !state.canSelect(path)) {
         Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
             Icon(AppIcons.Lock, stringResource(R.string.browser_restricted), Modifier.size(20.dp), tint = browserColors().summary)
         }
         return
     }
-    if (state.multiSelect) {
-        BrowserCheckbox(
-            selection = state.selectionOf(path),
-            description = stringResource(R.string.browser_select_directory, path.substringAfterLast('/')),
-            onClick = { state.togglePath(path) },
-            color = state.accentColor(),
-            modifier = Modifier.testTag("browser_select_$path"),
-        )
-        return
-    }
-    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-        Icon(AppIcons.ChevronRight, null, Modifier.size(18.dp), tint = browserColors().summary)
-    }
+    BrowserCheckbox(
+        selection = selection,
+        description = stringResource(R.string.browser_select_directory, path.substringAfterLast('/')),
+        onClick = { state.togglePath(path) },
+        color = state.accentColor(),
+        modifier = Modifier.testTag("browser_select_$path"),
+    )
 }
 
 // 搜索命中的片段用当前模式的强调色加粗

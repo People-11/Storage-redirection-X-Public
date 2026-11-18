@@ -161,6 +161,7 @@
     <string name="rule_config_delete_mapping_confirm">Delete this mapping?</string>
     <string name="rule_config_mapping_request_path">Request Path</string>
     <string name="rule_config_mapping_final_path">Final Path</string>
+    <string name="rule_config_mapping_choose_folder">Choose a folder</string>
     <string name="rule_config_mapping_hint">When the app accesses the request path, it actually reads and writes the final path.</string>
     <string name="rule_config_no_paths">No allowed paths configured</string>
     <string name="rule_config_no_mappings">No mappings configured</string>
@@ -172,15 +173,7 @@
     <string name="rule_config_shared_uid_hint">This app shares UID with the following apps. Enabling or configuring any will affect all:</string>
     <string name="rule_config_save_failed">Save failed</string>
     <string name="rule_config_paths_partially_invalid">Some selected paths are invalid and were skipped</string>
-    <string name="rule_config_error_empty">Path cannot be empty</string>
-    <string name="rule_config_error_absolute">Path must be relative (no leading /)</string>
-    <string name="rule_config_error_traversal">Path cannot contain ..</string>
     <string name="rule_config_error_same_paths">Current and target paths must be different</string>
-    <string name="rule_config_error_android_prefix">Path cannot be under Android/data. A mapping\'s current path may use a subfolder of this app\'s own data folder other than sdcard</string>
-    <string name="rule_config_error_android_always_allowed">The Android folder is always accessible. Only paths under Android/media can be excluded or made read-only</string>
-    <string name="rule_config_error_wildcard">Paths do not support * or ? wildcards</string>
-    <string name="rule_config_error_mapping_exclusion">Mapping paths do not support the ! or ^ rule prefixes</string>
-    <string name="rule_config_browse">Browse</string>
     <string name="rule_config_browser_use_current">Use current directory</string>
     <string name="rule_config_browser_load_failed">Failed to load directory</string>
     <string name="rule_config_browser_invalid_path">Invalid path</string>
@@ -331,6 +324,7 @@
         <item quantity="one">%2$d found in %1$s</item>
         <item quantity="other">%2$d found in %1$s</item>
     </plurals>
+    <string name="browser_confirm_select">Select</string>
     <string name="browser_confirm_add">Add</string>
     <string name="browser_confirm_exclude">Exclude</string>
     <string name="browser_confirm_readonly">Read-only</string>
