@@ -1,7 +1,7 @@
 use super::MountPlanner;
 use super::rules::{REAL_PATH_WILDCARD_EXPAND_LIMIT, has_path_wildcard, reduce_real_path_rules};
 use crate::domain::PathMapping;
-use crate::platform::{fs, paths};
+use crate::platform::fs;
 
 impl MountPlanner {
     pub fn apply_sdcard_redirect(
@@ -127,22 +127,10 @@ impl MountPlanner {
 
             let mut resolved_paths: Vec<String> = Vec::with_capacity(allowed_real_paths.len());
             for path in allowed_real_paths {
-                let resolved =
-                    self.resolve_user_path(&self.resolve_placeholders(&self.normalize_path(path)));
-                if resolved.is_empty() {
+                let Some(resolved) = self.resolve_storage_rule(path) else {
+                    log::warn!("skip allow (not a storage subfolder): {}", path);
                     continue;
-                }
-                if paths::has_unsafe_segments(&resolved) {
-                    continue;
-                }
-                if resolved == storage_path {
-                    log::warn!("skip allow (whole storage not supported): {}", resolved);
-                    continue;
-                }
-                if !paths::starts_with(&resolved, &format!("{}/", storage_path)) {
-                    log::warn!("skip allow (not under storage): {}", resolved);
-                    continue;
-                }
+                };
                 resolved_paths.push(resolved);
             }
 

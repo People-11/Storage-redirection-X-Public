@@ -11,47 +11,17 @@ impl MountPlanner {
         let mut resolved = Vec::with_capacity(path_mappings.len());
 
         for mapping in path_mappings {
-            let mut current_path = self.resolve_user_path(
-                &self.resolve_placeholders(&self.normalize_path(&mapping.request_path)),
-            );
-            let mut target_path = self.resolve_user_path(
-                &self.resolve_placeholders(&self.normalize_path(&mapping.final_path)),
-            );
-
-            if current_path.is_empty() || target_path.is_empty() {
-                continue;
-            }
-            if paths::has_unsafe_segments(&current_path) || paths::has_unsafe_segments(&target_path)
-            {
-                continue;
-            }
-
-            if !paths::is_absolute(&current_path) {
-                current_path = self.normalize_path(&paths::join(storage_path, &current_path));
-            }
-            if !paths::is_absolute(&target_path) {
-                target_path = self.normalize_path(&paths::join(storage_path, &target_path));
-            }
-
-            if current_path == storage_path || target_path == storage_path {
+            let (Some(current_path), Some(target_path)) = (
+                self.resolve_mapping_path(&mapping.request_path, storage_path),
+                self.resolve_mapping_path(&mapping.final_path, storage_path),
+            ) else {
                 log::warn!(
-                    "skip map (whole storage not supported): cur={} tgt={}",
-                    current_path,
-                    target_path
+                    "skip map (not a storage subfolder): cur={} tgt={}",
+                    mapping.request_path,
+                    mapping.final_path
                 );
                 continue;
-            }
-
-            if !paths::starts_with(&current_path, &format!("{}/", storage_path))
-                || !paths::starts_with(&target_path, &format!("{}/", storage_path))
-            {
-                log::warn!(
-                    "skip map (not under storage): cur={} tgt={}",
-                    current_path,
-                    target_path
-                );
-                continue;
-            }
+            };
 
             if current_path == target_path {
                 continue;
@@ -147,5 +117,14 @@ impl MountPlanner {
             *out = is_any_applied;
         }
         true
+    }
+
+    // 先展开占位符再判断：展开后仍为相对路径的以存储根为基准
+    fn resolve_mapping_path(&self, path: &str, storage_path: &str) -> Option<String> {
+        let expanded = self.resolve_placeholders(&self.normalize_path(path));
+        if paths::is_absolute(&expanded) {
+            return paths::resolve_storage_child(&expanded, self.user_id);
+        }
+        paths::resolve_storage_child(&paths::join(storage_path, &expanded), self.user_id)
     }
 }

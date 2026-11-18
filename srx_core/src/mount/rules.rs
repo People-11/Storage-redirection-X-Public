@@ -12,14 +12,11 @@ impl MountPlanner {
         storage_path: &str,
         label: &str,
     ) -> Vec<String> {
-        let storage_prefix = format!("{}/", storage_path);
         let mut expanded_paths = Vec::new();
         for rule in rules {
-            let resolved =
-                self.resolve_user_path(&self.resolve_placeholders(&self.normalize_path(rule)));
-            if !resolved.starts_with(&storage_prefix) || paths::has_unsafe_segments(&resolved) {
+            let Some(resolved) = self.resolve_storage_rule(rule) else {
                 continue;
-            }
+            };
             if !has_path_wildcard(&resolved) {
                 expanded_paths.push(resolved);
                 continue;

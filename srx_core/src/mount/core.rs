@@ -177,6 +177,14 @@ impl MountPlanner {
         paths::resolve_user_path(path, self.user_id)
     }
 
+    // 展开占位符后按 paths::resolve_storage_child 校验
+    pub(super) fn resolve_storage_rule(&self, path: &str) -> Option<String> {
+        paths::resolve_storage_child(
+            &self.resolve_placeholders(&self.normalize_path(path)),
+            self.user_id,
+        )
+    }
+
     pub(super) fn resolve_placeholders(&self, path: &str) -> String {
         let has_redirect_placeholder =
             path.contains("${REDIRECT_TARGET}") || path.contains("$REDIRECT_TARGET");
