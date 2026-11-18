@@ -24,10 +24,6 @@ data class RedirectConfig(
     val redirectApps: List<String> = emptyList(),
     val appConfigs: List<AppRedirectConfig> = emptyList()
 ) {
-    // 检查应用是否在白名单中
-    fun isAppInWhitelist(packageName: String): Boolean =
-        redirectApps.contains(packageName)
-
     // 获取应用配置
     fun getAppConfig(packageName: String): AppRedirectConfig? =
         appConfigs.firstOrNull { it.packageName == packageName }

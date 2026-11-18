@@ -1,8 +1,6 @@
 // Java hook 模块入口：加载内嵌 DEX、拿 Hooker class 引用、绑定 native callback
 // 由 specialize_pre 在 MediaProvider 目标进程内触发；失败不影响其他路径
 
-#![allow(dead_code)]
-
 mod dex_loader;
 mod hooker_class;
 mod lsplant;
@@ -19,7 +17,7 @@ pub fn is_available() -> bool {
     !HOOKER_DEX.is_empty()
 }
 
-// 在目标进程内初始化一次；成功后 hooker_class() 返回全局引用
+// 在目标进程内初始化一次
 pub fn init_once(
     env: *mut JNIEnv,
     is_query_enabled: bool,
@@ -102,6 +100,3 @@ fn install_media_provider_hook(
         ],
     )
 }
-
-#[allow(unused_imports)]
-pub use hooker_class::hooker_class;
