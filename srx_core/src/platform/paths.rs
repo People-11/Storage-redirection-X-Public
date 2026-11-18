@@ -264,6 +264,26 @@ pub fn extract_android_private_path_owner(path: &str) -> String {
     segments.next().unwrap_or_default().to_string()
 }
 
+// 挂载到 Android 容器目录、应用私有包根目录或 sdcard 沙盒会遮住其他应用或整个沙盒，不能作为映射原目录
+pub fn is_unmountable_android_path(path: &str) -> bool {
+    let normalized = normalize(path);
+    let Some(user_id) = storage_user_segment(&normalized) else {
+        return false;
+    };
+    let android_root = format!("/storage/emulated/{}/Android", user_id);
+    let Some(relative) = normalized.strip_prefix(&android_root) else {
+        return false;
+    };
+    if !relative.is_empty() && !relative.starts_with('/') {
+        return false;
+    }
+    let segments: Vec<&str> = relative.split('/').filter(|s| !s.is_empty()).collect();
+    matches!(
+        segments.as_slice(),
+        [] | ["data" | "media" | "obb"] | ["data", _] | ["data", _, "sdcard", ..]
+    )
+}
+
 pub fn is_absolute(path: &str) -> bool {
     !path.is_empty() && path.starts_with('/')
 }

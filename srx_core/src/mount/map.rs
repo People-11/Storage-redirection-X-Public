@@ -57,6 +57,11 @@ impl MountPlanner {
                 continue;
             }
 
+            if paths::is_unmountable_android_path(&current_path) {
+                log::warn!("skip map (unmountable android path): cur={}", current_path);
+                continue;
+            }
+
             resolved.push(PathMapping::new(current_path, target_path));
         }
 

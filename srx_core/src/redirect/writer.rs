@@ -360,9 +360,12 @@ fn build_caller_mappings(caller_package: &str, caller_uid: i32) -> Vec<PathMappi
         {
             continue;
         }
-        if current_path == android_prefix
-            || paths::starts_with(&current_path, &android_prefix_with_slash)
-            || target_path == android_prefix
+        let is_current_android = current_path == android_prefix
+            || paths::starts_with(&current_path, &android_prefix_with_slash);
+        if is_current_android && !is_own_private_mapping_source(&current_path, caller_package) {
+            continue;
+        }
+        if target_path == android_prefix
             || paths::starts_with(&target_path, &android_prefix_with_slash)
         {
             continue;
@@ -382,6 +385,13 @@ fn build_caller_mappings(caller_package: &str, caller_uid: i32) -> Vec<PathMappi
     });
 
     mappings
+}
+
+// 映射原目录位于调用方自己的 Android/data/<包名> 下时，代写也要按映射改写，否则文件落进被挂载遮住的真实目录
+fn is_own_private_mapping_source(path: &str, caller_package: &str) -> bool {
+    paths::extract_android_private_path_owner(path) == caller_package
+        && path.contains("/Android/data/")
+        && !paths::is_unmountable_android_path(path)
 }
 
 fn get_caller_default_redirect_target(caller_package: &str, user_id: i32) -> String {
