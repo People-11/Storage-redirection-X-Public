@@ -189,7 +189,7 @@ data class RedirectConfig(
             if (value.isEmpty()) return null
             if (RealPathRuleMode.of(value) != RealPathRuleMode.Allow) return null
             if (containsWildcard(value)) return null
-            return normalizeRelativePath(value, privateOwner)
+            return normalizeRelativePath(value, privateOwner)?.takeUnless(::isAndroidContainerPath)
         }
 
         // 校验真实路径规则：允许 ! 与 ^ 前缀
@@ -238,7 +238,20 @@ data class RedirectConfig(
             if (containsWildcard(value)) {
                 return PathValidationResult.WildcardNotAllowed
             }
-            return validateRelativePath(value, privateOwner)
+            val validation = validateRelativePath(value, privateOwner)
+            if (validation is PathValidationResult.Valid && isAndroidContainerPath(validation.normalized)) {
+                return PathValidationResult.AndroidDataPath
+            }
+            return validation
+        }
+
+        // Android 及其 media、obb 容器目录挂载后会遮住其他应用的目录，只能映射其下的具体子目录
+        private fun isAndroidContainerPath(normalized: String): Boolean {
+            val segments = normalized.split('/')
+            if (!segments[0].equals(ANDROID_DIRECTORY, ignoreCase = true)) return false
+            return segments.size == 1 ||
+                (segments.size == 2 &&
+                    (segments[1].equals("media", ignoreCase = true) || segments[1].equals("obb", ignoreCase = true)))
         }
 
         private fun validateRelativePath(raw: String, privateOwner: String? = null): PathValidationResult {
