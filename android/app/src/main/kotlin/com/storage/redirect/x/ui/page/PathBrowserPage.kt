@@ -34,8 +34,7 @@ fun PathBrowserPage(
     multiSelect: Boolean = false,
     allowExclude: Boolean = false,
     onBack: () -> Unit,
-    onPathSelect: (String) -> Unit,
-    onPathsSelect: (List<String>) -> Unit = {},
+    onConfirm: (List<String>) -> Unit,
 ) {
     val state = remember(userId, packageName, multiSelect, allowExclude) {
         PathBrowserState(userId, packageName, multiSelect, allowExclude)
@@ -71,9 +70,7 @@ fun PathBrowserPage(
             )
             BrowserFloatingBar(state, onSpaceChange = { floatingBarSpace = it }) {
                 val paths = state.confirmedPaths()
-                if (paths.isNotEmpty()) {
-                    if (multiSelect) onPathsSelect(paths) else onPathSelect(paths.first())
-                }
+                if (paths.isNotEmpty()) onConfirm(paths)
             }
             Box(Modifier.padding(top = padding.calculateTopPadding())) {
                 BrowserPathPanel(state)

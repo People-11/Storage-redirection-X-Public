@@ -59,25 +59,20 @@ internal class PathBrowserState(
         }.let { if (isDescending) it.reversed() else it }
 
     val canConfirm: Boolean
-        get() = if (multiSelect) confirmablePaths.isNotEmpty()
-        else !isLoading && !hasLoadError && canSelect(currentPath)
+        get() = confirmablePaths.isNotEmpty()
 
     // 切换模式后，已选目录可能变为始终允许，不再生成规则
     private val confirmablePaths: List<String>
         get() = selectedPaths.filterNot(::isAlwaysAllowed)
 
+    // 多选按规则校验，单选按映射路径校验；受限目录仍可进入，只是不能勾选
     fun canSelect(path: String): Boolean {
         if (path.isEmpty()) return false
-        if (packageName != null) {
-            return !path.startsWith('/') && RealPathRuleMode.of(path) == RealPathRuleMode.Allow &&
-                path.split('/').none { it == "." || it == ".." } &&
-                !path.contains('*') && !path.contains('?')
-        }
-        return RedirectConfig.validateMappingPath(path) is PathValidationResult.Valid
+        if (multiSelect) return RedirectConfig.validateRealPathRule(ruleMode.prefix + path) is PathValidationResult.Valid
+        return RedirectConfig.validateMappingPath(path, packageName) is PathValidationResult.Valid
     }
 
     fun navigateTo(path: String) {
-        if (path.isNotEmpty() && !canSelect(path)) return
         // 在新协程启动前失效旧请求，同一路径的往返也不能复用旧结果。
         loadGeneration += 1
         currentPath = path
@@ -93,14 +88,19 @@ internal class PathBrowserState(
     fun selectionOf(path: String): DirectorySelection = when {
         isAlwaysAllowed(path) -> DirectorySelection.Covered
         path in selectedPaths -> DirectorySelection.Selected
+        !multiSelect -> DirectorySelection.None
         selectedPaths.any { isAncestor(it, path) } -> DirectorySelection.Covered
         selectedPaths.any { isAncestor(path, it) } -> DirectorySelection.Partial
         else -> DirectorySelection.None
     }
 
-    // 选中父目录时移除已选子目录，祖先已选中时子目录不再单独加入
+    // 单选只保留最后一次勾选；多选时选中父目录会移除已选子目录，祖先已选中时子目录不再单独加入
     fun togglePath(path: String) {
-        if (!multiSelect || !canSelect(path)) return
+        if (!canSelect(path)) return
+        if (!multiSelect) {
+            selectedPaths = if (path in selectedPaths) emptySet() else setOf(path)
+            return
+        }
         selectedPaths = when (selectionOf(path)) {
             DirectorySelection.Selected -> selectedPaths - path
             DirectorySelection.Covered -> return
@@ -123,8 +123,7 @@ internal class PathBrowserState(
     fun confirmedPaths(): List<String> {
         if (!canConfirm) return emptyList()
         val prefix = ruleMode.prefix
-        val paths = if (multiSelect) confirmablePaths else listOf(currentPath)
-        return paths.map { prefix + it }
+        return confirmablePaths.map { prefix + it }
     }
 
     suspend fun load(repository: PathBrowserRepository) {

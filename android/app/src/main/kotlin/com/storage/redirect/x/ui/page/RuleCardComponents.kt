@@ -26,7 +26,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.storage.redirect.x.R
-import com.storage.redirect.x.data.model.PathValidationResult
 import com.storage.redirect.x.data.model.RealPathRuleMode
 import com.storage.redirect.x.ui.component.PAGE_GROUP_GAP
 import com.storage.redirect.x.ui.component.STATUS_READONLY_COLOR
@@ -190,18 +189,5 @@ internal fun RowScope.CardActionButton(
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
         )
-    }
-}
-
-internal fun resolvePathValidationErrorResId(result: PathValidationResult): Int {
-    return when (result) {
-        PathValidationResult.Empty -> R.string.rule_config_error_empty
-        PathValidationResult.Absolute -> R.string.rule_config_error_absolute
-        PathValidationResult.Traversal -> R.string.rule_config_error_traversal
-        PathValidationResult.AndroidDataPath -> R.string.rule_config_error_android_prefix
-        PathValidationResult.AndroidAlwaysAllowed -> R.string.rule_config_error_android_always_allowed
-        PathValidationResult.WildcardNotAllowed -> R.string.rule_config_error_wildcard
-        PathValidationResult.ExclusionNotAllowed -> R.string.rule_config_error_mapping_exclusion
-        is PathValidationResult.Valid -> R.string.rule_config_error_empty
     }
 }

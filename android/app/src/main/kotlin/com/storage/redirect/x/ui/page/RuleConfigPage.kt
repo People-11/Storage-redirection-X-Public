@@ -43,7 +43,6 @@ import com.storage.redirect.x.ui.icon.AppIcons
 import com.storage.redirect.x.data.model.PathValidationResult
 import com.storage.redirect.x.data.model.RedirectConfig
 import com.storage.redirect.x.data.model.RedirectTemplate
-import com.storage.redirect.x.data.model.StoragePathMapping
 import com.storage.redirect.x.data.repository.ConfigRepository
 import com.storage.redirect.x.data.repository.PathBrowserRepository
 import com.storage.redirect.x.data.repository.SharedUidRepository
@@ -114,11 +113,7 @@ fun RuleConfigPage(
     // 保存锁覆盖完整 I/O，旧任务取消后新写入仍须等待旧写入结束。
     val saveMutex = remember { Mutex() }
 
-    // 映射弹窗状态
-    val showMappingDialog = remember { mutableStateOf(false) }
-    var dialogMappingRequestPathInput by remember { mutableStateOf("") }
-    var dialogMappingFinalPathInput by remember { mutableStateOf("") }
-    var mappingDialogErrorResId by remember { mutableStateOf<Int?>(null) }
+    val mappingDialog = remember { MappingDialogState() }
 
     // 删除确认弹窗
     val showDeleteDialog = remember { mutableStateOf(false) }
@@ -266,33 +261,27 @@ fun RuleConfigPage(
                 multiSelect = target == BrowseTarget.Path,
                 allowExclude = target == BrowseTarget.Path,
                 onBack = onBrowserBack,
-                // 允许路径只走多选，单选结果只来自映射路径
-                onPathSelect = { selected ->
-                    if (target == BrowseTarget.MappingCurrentPath) {
-                        dialogMappingRequestPathInput = selected
-                    } else {
-                        dialogMappingFinalPathInput = selected
-                    }
-                    mappingDialogErrorResId = null
-                    showMappingDialog.value = true
-                    onBrowserBack()
-                },
-                onPathsSelect = { paths ->
-                    val validPaths = paths.mapNotNull { raw ->
-                        val validation = RedirectConfig.validateRealPathRule(raw)
-                        if (validation is PathValidationResult.Valid) validation.normalized else null
-                    }
-                    if (validPaths.isEmpty()) {
-                        Toast.makeText(context, R.string.rule_config_browser_invalid_path, Toast.LENGTH_SHORT).show()
-                    } else {
-                        var nextConfig = config
-                        for (path in validPaths) {
-                            nextConfig = nextConfig.addAllowedRealPath(packageName, path)
+                onConfirm = { paths ->
+                    // 允许路径走多选，映射路径走单选
+                    if (target == BrowseTarget.Path) {
+                        val validPaths = paths.mapNotNull { raw ->
+                            val validation = RedirectConfig.validateRealPathRule(raw)
+                            if (validation is PathValidationResult.Valid) validation.normalized else null
                         }
-                        saveConfig(nextConfig)
-                        if (validPaths.size < paths.size) {
-                            Toast.makeText(context, R.string.rule_config_paths_partially_invalid, Toast.LENGTH_SHORT).show()
+                        if (validPaths.isEmpty()) {
+                            Toast.makeText(context, R.string.rule_config_browser_invalid_path, Toast.LENGTH_SHORT).show()
+                        } else {
+                            var nextConfig = config
+                            for (path in validPaths) {
+                                nextConfig = nextConfig.addAllowedRealPath(packageName, path)
+                            }
+                            saveConfig(nextConfig)
+                            if (validPaths.size < paths.size) {
+                                Toast.makeText(context, R.string.rule_config_paths_partially_invalid, Toast.LENGTH_SHORT).show()
+                            }
                         }
+                    } else {
+                        mappingDialog.pick(paths.first(), isRequest = target == BrowseTarget.MappingCurrentPath)
                     }
                     onBrowserBack()
                 },
@@ -465,12 +454,7 @@ fun RuleConfigPage(
                                 CardActionButton(
                                     icon = AppIcons.Add,
                                     text = stringResource(R.string.rule_config_add_mapping),
-                                    onClick = {
-                                        dialogMappingRequestPathInput = ""
-                                        dialogMappingFinalPathInput = ""
-                                        mappingDialogErrorResId = null
-                                        showMappingDialog.value = true
-                                    },
+                                    onClick = mappingDialog::open,
                                     modifier = Modifier.testTag("rule_config_add_mapping"),
                                 )
                             }
@@ -496,77 +480,14 @@ fun RuleConfigPage(
         }
     }
 
-    // 映射添加弹窗
-    WindowDialog(
-        show = showMappingDialog.value && !isBrowsing,
-        title = stringResource(R.string.rule_config_add_mapping),
-        summary = stringResource(R.string.rule_config_mapping_hint),
-        onDismissRequest = {
-            mappingDialogErrorResId = null
-            showMappingDialog.value = false
-        }
-    ) {
-        RulePathField(
-            value = dialogMappingRequestPathInput,
-            onValueChange = {
-                dialogMappingRequestPathInput = it
-                mappingDialogErrorResId = null
-            },
-            label = stringResource(R.string.rule_config_mapping_request_path),
-            onBrowse = { browseStack.push(BrowseTarget.MappingCurrentPath) },
-        )
-        MappingDirectionArrow()
-        RulePathField(
-            value = dialogMappingFinalPathInput,
-            onValueChange = {
-                dialogMappingFinalPathInput = it
-                mappingDialogErrorResId = null
-            },
-            label = stringResource(R.string.rule_config_mapping_final_path),
-            onBrowse = { browseStack.push(BrowseTarget.MappingTargetPath) },
-        )
-        mappingDialogErrorResId?.let { errorResId ->
-            Spacer(Modifier.height(RULE_CONFIG_DIALOG_FIELD_SPACING))
-            Text(
-                text = stringResource(errorResId),
-                color = MiuixTheme.colorScheme.error,
-                style = MiuixTheme.textStyles.body2
-            )
-        }
-        Spacer(Modifier.height(RULE_CONFIG_DIALOG_BOTTOM_SPACING))
-        DialogButtonRow(
-            show = showMappingDialog,
-            onConfirm = {
-                val mappingRequestPathValidation =
-                    RedirectConfig.validateMappingPath(dialogMappingRequestPathInput, packageName)
-                if (mappingRequestPathValidation !is PathValidationResult.Valid) {
-                    mappingDialogErrorResId = resolvePathValidationErrorResId(mappingRequestPathValidation)
-                    return@DialogButtonRow false
-                }
-
-                val mappingFinalPathValidation = RedirectConfig.validateMappingPath(dialogMappingFinalPathInput)
-                if (mappingFinalPathValidation !is PathValidationResult.Valid) {
-                    mappingDialogErrorResId = resolvePathValidationErrorResId(mappingFinalPathValidation)
-                    return@DialogButtonRow false
-                }
-
-                if (mappingRequestPathValidation.normalized == mappingFinalPathValidation.normalized) {
-                    mappingDialogErrorResId = R.string.rule_config_error_same_paths
-                    return@DialogButtonRow false
-                }
-
-                mappingDialogErrorResId = null
-                scope.launch {
-                    val mapping = StoragePathMapping(
-                        mappingRequestPathValidation.normalized,
-                        mappingFinalPathValidation.normalized
-                    )
-                    saveConfig(config.addPathMapping(packageName, mapping))
-                }
-                true
-            }
-        )
-    }
+    AddMappingDialog(
+        show = mappingDialog.isOpen && !isBrowsing,
+        state = mappingDialog,
+        onPickRequest = { browseStack.push(BrowseTarget.MappingCurrentPath) },
+        onPickFinal = { browseStack.push(BrowseTarget.MappingTargetPath) },
+        onConfirm = { mapping -> saveConfig(config.addPathMapping(packageName, mapping)) },
+        tagPrefix = "rule_config_mapping",
+    )
 
     WindowDialog(
         show = showSaveTemplateDialog.value,

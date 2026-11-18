@@ -189,7 +189,7 @@ data class RedirectConfig(
             if (value.isEmpty()) return null
             if (RealPathRuleMode.of(value) != RealPathRuleMode.Allow) return null
             if (containsWildcard(value)) return null
-            return normalizeRelativePath(value, privateOwner)?.takeUnless(::isAndroidContainerPath)
+            return normalizeRelativePath(value, privateOwner)
         }
 
         // 校验真实路径规则：允许 ! 与 ^ 前缀
@@ -245,7 +245,7 @@ data class RedirectConfig(
             return validation
         }
 
-        // Android 及其 media、obb 容器目录挂载后会遮住其他应用的目录，只能映射其下的具体子目录
+        // 浏览器据此禁止勾选 Android 及其 media、obb 容器目录：挂载后会遮住其他应用的目录，只能映射其下的具体子目录
         private fun isAndroidContainerPath(normalized: String): Boolean {
             val segments = normalized.split('/')
             if (!segments[0].equals(ANDROID_DIRECTORY, ignoreCase = true)) return false

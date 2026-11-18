@@ -1,5 +1,21 @@
 package com.storage.redirect.x.ui.page
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
+import com.storage.redirect.x.data.model.StoragePathMapping
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.utils.PressFeedbackType
+import top.yukonga.miuix.kmp.window.WindowDialog
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -23,42 +39,141 @@ import com.storage.redirect.x.R
 import com.storage.redirect.x.data.model.RedirectTemplate
 import com.storage.redirect.x.ui.icon.AppIcons
 import top.yukonga.miuix.kmp.basic.Icon
-import com.storage.redirect.x.ui.component.SrxIconButton as IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 // 规则配置页、模板编辑页与应用页共用的对话框组件
 private val TEMPLATE_PICKER_MAX_HEIGHT = 360.dp
+private val MAPPING_DIALOG_FIELD_SPACING = 8.dp
+private val MAPPING_DIALOG_BOTTOM_SPACING = 16.dp
+private val MAPPING_DIALOG_BUTTON_SPACING = 12.dp
 
-// 路径输入框；onBrowse 非空时尾部显示浏览按钮
+// 映射对话框状态：两个路径只能经目录浏览器选择，选择时已排除受限目录
+@Stable
+internal class MappingDialogState {
+    var isOpen by mutableStateOf(false)
+    var requestPath by mutableStateOf("")
+    var finalPath by mutableStateOf("")
+    var errorResId by mutableStateOf<Int?>(null)
+
+    fun open() {
+        requestPath = ""
+        finalPath = ""
+        errorResId = null
+        isOpen = true
+    }
+
+    fun close() {
+        errorResId = null
+        isOpen = false
+    }
+
+    // 浏览器返回后回到对话框
+    fun pick(path: String, isRequest: Boolean) {
+        if (isRequest) requestPath = path else finalPath = path
+        errorResId = null
+        isOpen = true
+    }
+}
+
+// 规则配置页与模板编辑页共用的添加映射对话框；show 由页面决定，浏览期间需隐藏
 @Composable
-internal fun RulePathField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    modifier: Modifier = Modifier,
-    onBrowse: (() -> Unit)? = null,
+internal fun AddMappingDialog(
+    show: Boolean,
+    state: MappingDialogState,
+    onPickRequest: () -> Unit,
+    onPickFinal: () -> Unit,
+    onConfirm: (StoragePathMapping) -> Unit,
+    tagPrefix: String,
 ) {
-    TextField(
-        value = value,
-        onValueChange = onValueChange,
+    WindowDialog(
+        show = show,
+        title = stringResource(R.string.rule_config_add_mapping),
+        summary = stringResource(R.string.rule_config_mapping_hint),
+        onDismissRequest = state::close,
+    ) {
+        MappingPathPicker(
+            label = stringResource(R.string.rule_config_mapping_request_path),
+            path = state.requestPath,
+            onClick = onPickRequest,
+            modifier = Modifier.testTag("${tagPrefix}_request_picker"),
+        )
+        MappingDirectionArrow()
+        MappingPathPicker(
+            label = stringResource(R.string.rule_config_mapping_final_path),
+            path = state.finalPath,
+            onClick = onPickFinal,
+            modifier = Modifier.testTag("${tagPrefix}_final_picker"),
+        )
+        state.errorResId?.let { errorResId ->
+            Spacer(Modifier.height(MAPPING_DIALOG_FIELD_SPACING))
+            Text(
+                text = stringResource(errorResId),
+                color = MiuixTheme.colorScheme.error,
+                style = MiuixTheme.textStyles.body2,
+            )
+        }
+        Spacer(Modifier.height(MAPPING_DIALOG_BOTTOM_SPACING))
+        Row {
+            TextButton(
+                text = stringResource(R.string.common_cancel),
+                onClick = state::close,
+                modifier = Modifier.weight(1f).testTag("${tagPrefix}_cancel"),
+            )
+            Spacer(Modifier.width(MAPPING_DIALOG_BUTTON_SPACING))
+            TextButton(
+                text = stringResource(R.string.common_ok),
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+                enabled = state.requestPath.isNotEmpty() && state.finalPath.isNotEmpty(),
+                onClick = {
+                    if (state.requestPath == state.finalPath) {
+                        state.errorResId = R.string.rule_config_error_same_paths
+                    } else {
+                        onConfirm(StoragePathMapping(state.requestPath, state.finalPath))
+                        state.close()
+                    }
+                },
+                modifier = Modifier.weight(1f).testTag("${tagPrefix}_confirm"),
+            )
+        }
+    }
+}
+
+// 路径选择行：只能点击后在浏览器中选择，未选时显示占位提示
+@Composable
+private fun MappingPathPicker(label: String, path: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Card(
         modifier = modifier.fillMaxWidth(),
-        label = label,
-        trailingIcon = onBrowse?.let { browse ->
-            {
-                IconButton(onClick = browse, modifier = Modifier.padding(end = 4.dp)) {
-                    Icon(
-                        imageVector = AppIcons.FolderOpen,
-                        contentDescription = stringResource(R.string.rule_config_browse),
-                        tint = MiuixTheme.colorScheme.primary,
-                    )
-                }
+        cornerRadius = 12.dp,
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        colors = CardDefaults.defaultColors(color = MiuixTheme.colorScheme.secondaryVariant),
+        onClick = onClick,
+        pressFeedbackType = PressFeedbackType.Sink,
+        showIndication = true,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(label, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, fontSize = 12.sp)
+                Text(
+                    text = path.ifEmpty { stringResource(R.string.rule_config_mapping_choose_folder) },
+                    color = if (path.isEmpty()) {
+                        MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    } else {
+                        MiuixTheme.colorScheme.onSurface
+                    },
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-        },
-    )
+            Icon(
+                imageVector = AppIcons.FolderOpen,
+                contentDescription = stringResource(R.string.rule_config_browse),
+                tint = MiuixTheme.colorScheme.primary,
+            )
+        }
+    }
 }
 
 // 映射方向：上方请求路径指向下方最终路径
