@@ -8,6 +8,10 @@ import com.storage.redirect.x.data.service.RootService
 // 目录浏览数据源，读取当前用户存储目录并转为相对路径
 class PathBrowserRepository {
 
+    private companion object {
+        const val ANDROID_DIR = "Android"
+    }
+
     // 列出相对目录，默认根目录为 /storage/emulated/{userId}
     suspend fun listRelativeDirectories(userId: Int, relativePath: String): List<String>? {
         val normalized = normalizeRelativePath(relativePath) ?: return null
@@ -36,6 +40,7 @@ class PathBrowserRepository {
     }
 
     // 私有挂载点属于目标用户和包，不能使用调用方的存储目录。
+    // 应用视角的 Android 目录是恢复后的真实目录，只展开到该应用自己的私有目录
     @SuppressLint("SdCardPath")
     suspend fun listAppPrivateDirectories(
         userId: Int,
@@ -43,10 +48,27 @@ class PathBrowserRepository {
         relativePath: String
     ): List<String>? {
         val normalized = normalizeSimpleRelativePath(relativePath) ?: return null
-        val baseDir = "/storage/emulated/$userId/Android/data/$packageName/sdcard"
-        val currentDir = if (normalized.isEmpty()) baseDir else "$baseDir/$normalized"
+        val privateRoot = "$ANDROID_DIR/data/$packageName"
+        return when {
+            normalized.isEmpty() -> {
+                val sandboxDir = "/storage/emulated/$userId/$privateRoot/sdcard"
+                val children = listChildDirectories(sandboxDir, normalized) ?: return null
+                (children + ANDROID_DIR).distinct().sorted()
+            }
+            normalized == ANDROID_DIR -> listOf("$ANDROID_DIR/data")
+            normalized == "$ANDROID_DIR/data" -> listOf(privateRoot)
+            normalized == privateRoot || normalized.startsWith("$privateRoot/") -> {
+                // 沙盒本身即浏览根目录，不再从私有目录重复进入
+                listChildDirectories("/data/media/$userId/$normalized", normalized)
+                    ?.filterNot { it == "$privateRoot/sdcard" }
+            }
+            normalized.startsWith("$ANDROID_DIR/") -> emptyList()
+            else -> listChildDirectories("/storage/emulated/$userId/$privateRoot/sdcard/$normalized", normalized)
+        }
+    }
 
-        val command = "ls -1 -A -p ${quotePath(currentDir)} 2>/dev/null"
+    private suspend fun listChildDirectories(directory: String, relativeBase: String): List<String>? {
+        val command = "ls -1 -A -p ${quotePath(directory)} 2>/dev/null"
         val result = RootService.runCommand(command)
         if (!result.isSuccess) return null
 
@@ -56,9 +78,7 @@ class PathBrowserRepository {
             .filter { it.endsWith("/") }
             .map { it.removeSuffix("/") }
             .filter { it.isNotEmpty() }
-            .map { child ->
-                if (normalized.isEmpty()) child else "$normalized/$child"
-            }
+            .map { child -> if (relativeBase.isEmpty()) child else "$relativeBase/$child" }
             .sorted()
             .toList()
     }
