@@ -14,35 +14,26 @@ pub unsafe extern "C" fn hooked_mknod(
     dev: libc::dev_t,
 ) -> c_int {
     let self_ptr = hooked_mknod as *mut c_void;
+    let call_with_path = |final_path: *const c_char| {
+        runtime::call_prev(
+            self_ptr,
+            || libc::mknod(final_path, mode, dev),
+            |prev| {
+                let f: unsafe extern "C" fn(*const c_char, mode_t, libc::dev_t) -> c_int =
+                    std::mem::transmute(prev);
+                f(final_path, mode, dev)
+            },
+        )
+    };
     runtime::with_hook_guard(
-        || {
-            runtime::call_prev(
-                self_ptr,
-                || libc::mknod(pathname, mode, dev),
-                |prev| {
-                    let f: unsafe extern "C" fn(*const c_char, mode_t, libc::dev_t) -> c_int =
-                        std::mem::transmute(prev);
-                    f(pathname, mode, dev)
-                },
-            )
-        },
+        || call_with_path(pathname),
         |hub| {
             hub.increment_mkdir_calls();
             if runtime::should_resolve_caller_context(hub) {
                 crate::hook::caller::update_caller_package_for_current_thread(hub);
             }
 
-            handle_mknod_like(hub, "mknod", pathname, mode, |call_path| {
-                runtime::call_prev(
-                    self_ptr,
-                    || libc::mknod(call_path, mode, dev),
-                    |prev| {
-                        let f: unsafe extern "C" fn(*const c_char, mode_t, libc::dev_t) -> c_int =
-                            std::mem::transmute(prev);
-                        f(call_path, mode, dev)
-                    },
-                )
-            })
+            handle_mknod_like(hub, "mknod", pathname, mode, call_with_path)
         },
     )
 }
@@ -54,43 +45,26 @@ pub unsafe extern "C" fn hooked_mknodat(
     dev: libc::dev_t,
 ) -> c_int {
     let self_ptr = hooked_mknodat as *mut c_void;
+    let call_with_path = |final_path: *const c_char| {
+        runtime::call_prev(
+            self_ptr,
+            || libc::syscall(libc::SYS_mknodat, dirfd, final_path, mode, dev) as c_int,
+            |prev| {
+                let f: unsafe extern "C" fn(c_int, *const c_char, mode_t, libc::dev_t) -> c_int =
+                    std::mem::transmute(prev);
+                f(dirfd, final_path, mode, dev)
+            },
+        )
+    };
     runtime::with_hook_guard(
-        || {
-            runtime::call_prev(
-                self_ptr,
-                || libc::syscall(libc::SYS_mknodat, dirfd, pathname, mode, dev) as c_int,
-                |prev| {
-                    let f: unsafe extern "C" fn(
-                        c_int,
-                        *const c_char,
-                        mode_t,
-                        libc::dev_t,
-                    ) -> c_int = std::mem::transmute(prev);
-                    f(dirfd, pathname, mode, dev)
-                },
-            )
-        },
+        || call_with_path(pathname),
         |hub| {
             hub.increment_mkdir_calls();
             if runtime::should_resolve_caller_context(hub) {
                 crate::hook::caller::update_caller_package_for_current_thread(hub);
             }
 
-            handle_mknod_like(hub, "mknodat", pathname, mode, |call_path| {
-                runtime::call_prev(
-                    self_ptr,
-                    || libc::syscall(libc::SYS_mknodat, dirfd, call_path, mode, dev) as c_int,
-                    |prev| {
-                        let f: unsafe extern "C" fn(
-                            c_int,
-                            *const c_char,
-                            mode_t,
-                            libc::dev_t,
-                        ) -> c_int = std::mem::transmute(prev);
-                        f(dirfd, call_path, mode, dev)
-                    },
-                )
-            })
+            handle_mknod_like(hub, "mknodat", pathname, mode, call_with_path)
         },
     )
 }
