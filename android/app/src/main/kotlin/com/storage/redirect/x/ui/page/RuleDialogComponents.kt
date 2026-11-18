@@ -1,6 +1,5 @@
 package com.storage.redirect.x.ui.page
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
@@ -141,7 +140,7 @@ internal fun AddMappingDialog(
     }
 }
 
-// 路径选择行：只能点击后在浏览器中选择，未选时显示占位提示
+// 路径选择行：点击整行进入浏览器选择，未选时显示占位提示
 @Composable
 private fun MappingPathPicker(label: String, path: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Card(
@@ -153,24 +152,17 @@ private fun MappingPathPicker(label: String, path: String, onClick: () -> Unit, 
         pressFeedbackType = PressFeedbackType.Sink,
         showIndication = true,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text(label, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, fontSize = 12.sp)
-                Text(
-                    text = path.ifEmpty { stringResource(R.string.rule_config_mapping_choose_folder) },
-                    color = if (path.isEmpty()) {
-                        MiuixTheme.colorScheme.onSurfaceVariantSummary
-                    } else {
-                        MiuixTheme.colorScheme.onSurface
-                    },
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Icon(
-                imageVector = AppIcons.FolderOpen,
-                contentDescription = stringResource(R.string.rule_config_browse),
-                tint = MiuixTheme.colorScheme.primary,
+        Column {
+            Text(label, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, fontSize = 12.sp)
+            Text(
+                text = path.ifEmpty { stringResource(R.string.rule_config_mapping_choose_folder) },
+                color = if (path.isEmpty()) {
+                    MiuixTheme.colorScheme.onSurfaceVariantSummary
+                } else {
+                    MiuixTheme.colorScheme.onSurface
+                },
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
