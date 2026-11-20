@@ -122,8 +122,7 @@ pub fn parse_app_config(state: &mut SettingsState, package_name: &str, json_cont
         }
 
         if let Some(mappings_value) = user_obj.get("path_mappings") {
-            let mut index_by_current_path: HashMap<String, usize> = HashMap::new();
-            let mut upsert_mapping = |current_raw: &str, target_raw: &str| {
+            let mut push_mapping = |current_raw: &str, target_raw: &str| {
                 let resolved_current = resolve_allowed_path_for_user(current_raw, &storage_root);
                 if resolved_current.is_empty() {
                     log::warn!(
@@ -144,24 +143,15 @@ pub fn parse_app_config(state: &mut SettingsState, package_name: &str, json_cont
                     return;
                 }
 
-                if resolved_current == resolved_target {
-                    return;
-                }
-
-                if let Some(&idx) = index_by_current_path.get(&resolved_current) {
-                    if let Some(existing) = user_profile.path_mappings.get_mut(idx) {
-                        existing.final_path = resolved_target.clone();
-                    }
+                if paths::is_unmountable_android_path(&resolved_current) {
                     log::warn!(
-                        "override map (current dup): user={} cur={}",
+                        "skip map (unmountable android path): user={} path={}",
                         user_id,
                         resolved_current
                     );
                     return;
                 }
 
-                index_by_current_path
-                    .insert(resolved_current.clone(), user_profile.path_mappings.len());
                 user_profile
                     .path_mappings
                     .push(PathMapping::new(resolved_current, resolved_target));
@@ -175,7 +165,7 @@ pub fn parse_app_config(state: &mut SettingsState, package_name: &str, json_cont
                     let Some(target_str) = target_value.as_str() else {
                         continue;
                     };
-                    upsert_mapping(current_key, target_str);
+                    push_mapping(current_key, target_str);
                 }
             } else if let Some(list) = mappings_value.as_array() {
                 for item in list {
@@ -192,7 +182,7 @@ pub fn parse_app_config(state: &mut SettingsState, package_name: &str, json_cont
                     else {
                         continue;
                     };
-                    upsert_mapping(current_str, target_str);
+                    push_mapping(current_str, target_str);
                 }
             } else {
                 log::warn!(
@@ -228,8 +218,7 @@ pub fn parse_app_config(state: &mut SettingsState, package_name: &str, json_cont
     true
 }
 
-// 仅接受纯数字
-// 与应用端一致：原目录与已保留映射的原目录重叠为重复映射，与任一目标（含自身）重叠为链式映射，按顺序保留先出现的
+// 与应用端一致：原目录与已保留映射的原目录重叠（含相同）为重复映射，与任一目标（含自身）重叠为链式映射，按顺序保留先出现的
 fn drop_conflicting_mappings(mappings: Vec<PathMapping>, user_id: i32) -> Vec<PathMapping> {
     let mut kept: Vec<PathMapping> = Vec::with_capacity(mappings.len());
     for mapping in mappings {
@@ -253,6 +242,7 @@ fn drop_conflicting_mappings(mappings: Vec<PathMapping>, user_id: i32) -> Vec<Pa
     kept
 }
 
+// 仅接受纯数字
 fn try_parse_user_id(value: &str) -> Option<i32> {
     if value.is_empty() {
         return None;

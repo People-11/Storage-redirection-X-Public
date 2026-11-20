@@ -177,27 +177,6 @@ impl MountPlanner {
         paths::resolve_user_path(path, self.user_id)
     }
 
-    // 展开占位符后按 paths::resolve_storage_child 校验
-    pub(super) fn resolve_storage_rule(&self, path: &str) -> Option<String> {
-        paths::resolve_storage_child(
-            &self.resolve_placeholders(&self.normalize_path(path)),
-            self.user_id,
-        )
-    }
-
-    pub(super) fn resolve_placeholders(&self, path: &str) -> String {
-        let has_redirect_placeholder =
-            path.contains("${REDIRECT_TARGET}") || path.contains("$REDIRECT_TARGET");
-        if has_redirect_placeholder && self.redirect_target.is_empty() {
-            log::warn!(
-                "mount path: redirect target missing, cannot expand placeholder path={}",
-                path
-            );
-        }
-
-        paths::resolve_placeholders(path, &self.app_data_dir, &self.redirect_target)
-    }
-
     pub(super) fn bind_mount(&self, source: &str, target: &str, is_recursive: bool) -> bool {
         let Ok(c_source) = CString::new(source) else {
             return false;

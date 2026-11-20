@@ -14,19 +14,16 @@ impl MountPlanner {
     ) -> Vec<String> {
         let mut expanded_paths = Vec::new();
         for rule in rules {
-            let Some(resolved) = self.resolve_storage_rule(rule) else {
-                continue;
-            };
-            if !has_path_wildcard(&resolved) {
-                expanded_paths.push(resolved);
+            if !has_path_wildcard(rule) {
+                expanded_paths.push(rule.clone());
                 continue;
             }
-            let expanded = Self::expand_real_path_wildcard(&resolved, storage_path, storage_path);
+            let expanded = Self::expand_real_path_wildcard(rule, storage_path, storage_path);
             if expanded.len() >= REAL_PATH_WILDCARD_EXPAND_LIMIT {
                 log::warn!(
                     "{} wildcard limit path={} limit={}",
                     label,
-                    resolved,
+                    rule,
                     REAL_PATH_WILDCARD_EXPAND_LIMIT
                 );
             }

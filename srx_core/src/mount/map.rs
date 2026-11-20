@@ -1,51 +1,8 @@
 use super::MountPlanner;
 use crate::domain::PathMapping;
-use crate::platform::{fs, paths};
+use crate::platform::fs;
 
 impl MountPlanner {
-    pub(super) fn resolve_path_mappings(
-        &self,
-        path_mappings: &[PathMapping],
-        storage_path: &str,
-    ) -> Vec<PathMapping> {
-        let mut resolved = Vec::with_capacity(path_mappings.len());
-
-        for mapping in path_mappings {
-            let (Some(current_path), Some(target_path)) = (
-                self.resolve_mapping_path(&mapping.request_path, storage_path),
-                self.resolve_mapping_path(&mapping.final_path, storage_path),
-            ) else {
-                log::warn!(
-                    "skip map (not a storage subfolder): cur={} tgt={}",
-                    mapping.request_path,
-                    mapping.final_path
-                );
-                continue;
-            };
-
-            if current_path == target_path {
-                continue;
-            }
-
-            if paths::is_unmountable_android_path(&current_path) {
-                log::warn!("skip map (unmountable android path): cur={}", current_path);
-                continue;
-            }
-
-            resolved.push(PathMapping::new(current_path, target_path));
-        }
-
-        resolved.sort_by(|a, b| {
-            if a.request_path.len() != b.request_path.len() {
-                a.request_path.len().cmp(&b.request_path.len())
-            } else {
-                a.request_path.cmp(&b.request_path)
-            }
-        });
-
-        resolved
-    }
-
     pub(super) fn apply_resolved_path_mappings(
         &self,
         resolved_mappings: &[PathMapping],
@@ -118,13 +75,16 @@ impl MountPlanner {
         }
         true
     }
+}
 
-    // 先展开占位符再判断：展开后仍为相对路径的以存储根为基准
-    fn resolve_mapping_path(&self, path: &str, storage_path: &str) -> Option<String> {
-        let expanded = self.resolve_placeholders(&self.normalize_path(path));
-        if paths::is_absolute(&expanded) {
-            return paths::resolve_storage_child(&expanded, self.user_id);
-        }
-        paths::resolve_storage_child(&paths::join(storage_path, &expanded), self.user_id)
-    }
+// 父目录先挂，子目录映射才能叠在父映射之上；路径已由读配置校验
+pub(super) fn sort_mappings_parent_first(path_mappings: &[PathMapping]) -> Vec<PathMapping> {
+    let mut sorted = path_mappings.to_vec();
+    sorted.sort_by(|a, b| {
+        a.request_path
+            .len()
+            .cmp(&b.request_path.len())
+            .then_with(|| a.request_path.cmp(&b.request_path))
+    });
+    sorted
 }

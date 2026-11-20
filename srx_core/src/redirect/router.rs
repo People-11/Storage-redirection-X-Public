@@ -133,26 +133,10 @@ impl PathRouter {
         state.redirect_target =
             paths::resolve_user_path(&paths::normalize(redirect_target), state.user_id);
 
-        state.allowed_real_paths = resolve_rule_paths(allowed_real_paths, state.user_id);
-
-        state.excluded_real_paths = resolve_rule_paths(excluded_real_paths, state.user_id);
-
-        state.path_mappings.clear();
-        for mapping in path_mappings {
-            let (Some(current_path), Some(target_path)) = (
-                paths::resolve_storage_child(&mapping.request_path, state.user_id),
-                paths::resolve_storage_child(&mapping.final_path, state.user_id),
-            ) else {
-                continue;
-            };
-            if current_path == target_path {
-                continue;
-            }
-            state
-                .path_mappings
-                .push(PathMapping::new(current_path, target_path));
-        }
-
+        state.allowed_real_paths = allowed_real_paths.to_vec();
+        state.excluded_real_paths = excluded_real_paths.to_vec();
+        // 读配置已校验并去重，这里只按长度倒序排列，保证最长匹配优先
+        state.path_mappings = path_mappings.to_vec();
         state.path_mappings.sort_by(|a, b| {
             if a.request_path.len() != b.request_path.len() {
                 b.request_path.len().cmp(&a.request_path.len())
@@ -160,9 +144,6 @@ impl PathRouter {
                 a.request_path.cmp(&b.request_path)
             }
         });
-        state
-            .path_mappings
-            .dedup_by(|a, b| a.request_path == b.request_path);
 
         log::info!(
             "router cfg pkg={} user={} allow={} excl={} map={}",
@@ -380,13 +361,3 @@ impl PathRouter {
 }
 
 static PATH_ROUTER: Lazy<PathRouter> = Lazy::new(PathRouter::new);
-
-fn resolve_rule_paths(rules: &[String], user_id: i32) -> Vec<String> {
-    let mut resolved: Vec<String> = rules
-        .iter()
-        .filter_map(|rule| paths::resolve_storage_child(rule, user_id))
-        .collect();
-    resolved.sort();
-    resolved.dedup();
-    resolved
-}

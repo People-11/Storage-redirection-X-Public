@@ -1,4 +1,5 @@
 use super::MountPlanner;
+use super::map::sort_mappings_parent_first;
 use super::rules::{REAL_PATH_WILDCARD_EXPAND_LIMIT, has_path_wildcard, reduce_real_path_rules};
 use crate::domain::PathMapping;
 use crate::platform::fs;
@@ -125,19 +126,8 @@ impl MountPlanner {
                 data_media_root.as_str()
             };
 
-            let mut resolved_paths: Vec<String> = Vec::with_capacity(allowed_real_paths.len());
-            for path in allowed_real_paths {
-                let Some(resolved) = self.resolve_storage_rule(path) else {
-                    log::warn!("skip allow (not a storage subfolder): {}", path);
-                    continue;
-                };
-                resolved_paths.push(resolved);
-            }
-
-            resolved_paths.sort();
-            resolved_paths.dedup();
-
-            let effective_rules = reduce_real_path_rules(resolved_paths);
+            // 读配置已校验并排序去重，父目录排在子目录之前
+            let effective_rules = reduce_real_path_rules(allowed_real_paths.to_vec());
             let mut effective_paths: Vec<String> = Vec::with_capacity(effective_rules.len());
             for rule in effective_rules {
                 if has_path_wildcard(&rule) {
@@ -216,12 +206,8 @@ impl MountPlanner {
         }
 
         if !path_mappings.is_empty() {
-            let resolved_mappings = self.resolve_path_mappings(path_mappings, &storage_path);
-            log::info!(
-                "map resolve in={} effective={}",
-                path_mappings.len(),
-                resolved_mappings.len()
-            );
+            let resolved_mappings = sort_mappings_parent_first(path_mappings);
+            log::info!("map count={}", resolved_mappings.len());
             let mut is_any_applied = false;
             let _ = self.apply_resolved_path_mappings(
                 &resolved_mappings,
@@ -260,12 +246,8 @@ impl MountPlanner {
             return false;
         }
 
-        let resolved_mappings = self.resolve_path_mappings(path_mappings, &storage_path);
-        log::info!(
-            "map-only resolve in={} effective={}",
-            path_mappings.len(),
-            resolved_mappings.len()
-        );
+        let resolved_mappings = sort_mappings_parent_first(path_mappings);
+        log::info!("map-only count={}", resolved_mappings.len());
 
         let mut is_any_applied = false;
         let _ = self.apply_resolved_path_mappings(

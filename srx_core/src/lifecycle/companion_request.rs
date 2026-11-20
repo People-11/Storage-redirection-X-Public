@@ -5,7 +5,6 @@ pub struct CompanionMountRequest {
     pub pid: i32,
     pub uid: i32,
     pub package_name: String,
-    pub app_data_dir: String,
     pub redirect_target: String,
     pub allowed_real_paths: Vec<String>,
     pub excluded_real_paths: Vec<String>,
@@ -24,11 +23,6 @@ pub fn parse_companion_mount_request(payload: &str) -> Result<CompanionMountRequ
     request.uid = value.get("uid").and_then(|v| v.as_i64()).unwrap_or(-1) as i32;
     request.package_name = value
         .get("package")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    request.app_data_dir = value
-        .get("app_data_dir")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();

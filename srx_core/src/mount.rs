@@ -13,7 +13,6 @@ pub struct MountPlanner {
     package_name: String,
     app_uid: i32,
     user_id: i32,
-    app_data_dir: String,
     redirect_target: String,
 }
 
@@ -27,7 +26,6 @@ impl MountPlanner {
     pub fn new(
         package_name: &str,
         app_uid: i32,
-        app_data_dir: &str,
         redirect_target: &str,
         should_unshare: bool,
     ) -> Self {
@@ -44,7 +42,6 @@ impl MountPlanner {
             package_name: package_name.to_string(),
             app_uid,
             user_id,
-            app_data_dir: app_data_dir.to_string(),
             redirect_target: paths::normalize(redirect_target),
         }
     }

@@ -372,7 +372,6 @@ fn handle_child_process(request: &CompanionMountRequest, sock: c_int) -> bool {
     let mut mount_mgr = MountPlanner::new(
         &request.package_name,
         request.uid,
-        &request.app_data_dir,
         &request.redirect_target,
         false,
     );
