@@ -24,9 +24,6 @@ MODULE_ID = "storage.redirect.x"
 MODULE_NAME = "Storage Redirect X"
 MODULE_AUTHOR = "Storage Redirect Team"
 MODULE_DESCRIPTION = "Storage Redirect X module. Config changes made in the manager app apply automatically; external config file edits require restarting related apps."
-MODULE_UPDATE_JSON = "https://raw.githubusercontent.com/Kindness-Kismet/Storage-redirection-X-Public/main/update.json"
-MODULE_RELEASE_BASE_URL = "https://raw.githubusercontent.com/Kindness-Kismet/Storage-redirection-X-Public/main"
-MODULE_CHANGELOG_URL = "https://raw.githubusercontent.com/Kindness-Kismet/Storage-redirection-X-Public/main/CHANGELOG.md"
 CORE_SO_NAME = "libsrx_core.so"
 LOGD_BIN_NAME = "srx_logd"
 ANDROID_LINK_API_LEVEL = "31"
@@ -413,7 +410,6 @@ def package_module(console: Console, project_root: Path, module_assets_root: Pat
         f"versionCode={version.code}\n"
         f"author={MODULE_AUTHOR}\n"
         f"description={MODULE_DESCRIPTION}\n"
-        f"updateJson={MODULE_UPDATE_JSON}\n"
         "support=true\n"
     )
     write_lf_text(temp_dir / "module.prop", module_prop)
@@ -462,22 +458,6 @@ def package_module(console: Console, project_root: Path, module_assets_root: Pat
 
     size_mb = output_file.stat().st_size / 1024 / 1024
     console.ok(f"package done file={zip_name} size_mb={size_mb:.2f}")
-    if len(abis) > 1:
-        write_update_json(console, output_dir, version, zip_name)
-
-
-def write_update_json(console: Console, output_dir: Path, version: VersionInfo, zip_name: str) -> None:
-    content = (
-        "{\n"
-        f"  \"version\": \"{version.name}\",\n"
-        f"  \"versionCode\": {version.code},\n"
-        f"  \"zipUrl\": \"{MODULE_RELEASE_BASE_URL}/{zip_name}\",\n"
-        f"  \"changelog\": \"{MODULE_CHANGELOG_URL}\"\n"
-        "}\n"
-    )
-    output_file = output_dir / "update.json"
-    write_lf_text(output_file, content)
-    console.ok(f"update json={output_file}")
 
 
 def build_zygisk(args: argparse.Namespace) -> None:
