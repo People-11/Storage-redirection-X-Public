@@ -43,7 +43,6 @@ impl RuntimeFlow {
     }
 
     fn reset_specialize_state(&mut self) {
-        self.app_data_dir.clear();
         self.should_redirect = false;
         self.should_monitor = false;
         self.is_mount_request_sent = false;
@@ -364,11 +363,6 @@ impl RuntimeFlow {
             "/storage/emulated/{}/Android/data/{}/sdcard",
             user_id, self.package_name
         );
-        self.app_data_dir = if args.app_data_dir.is_null() {
-            String::new()
-        } else {
-            jni::get_jstring_utf8(self.env, unsafe { *args.app_data_dir })
-        };
 
         if self.is_system_writer_hook_redirect {
             PathRouter::instance().configure(
@@ -427,7 +421,6 @@ impl RuntimeFlow {
             self.app_pid,
             self.app_uid,
             &self.package_name,
-            &self.app_data_dir,
             &redirect_base,
             &allowed_real_paths,
             &excluded_real_paths,

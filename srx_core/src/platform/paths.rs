@@ -51,22 +51,6 @@ pub fn resolve_user_path(path: &str, user_id: i32) -> String {
     resolved
 }
 
-// 替换 ${APP_DATA_DIR} / ${REDIRECT_TARGET} 占位符
-pub fn resolve_placeholders(path: &str, app_data_dir: &str, redirect_target: &str) -> String {
-    let mut resolved = path.to_string();
-    if !app_data_dir.is_empty() {
-        resolved = resolved.replace("${APP_DATA_DIR}", app_data_dir);
-        resolved = resolved.replace("$APP_DATA_DIR", app_data_dir);
-    }
-
-    if !redirect_target.is_empty() {
-        resolved = resolved.replace("${REDIRECT_TARGET}", redirect_target);
-        resolved = resolved.replace("$REDIRECT_TARGET", redirect_target);
-    }
-
-    resolved
-}
-
 pub fn starts_with(path: &str, prefix: &str) -> bool {
     path.starts_with(prefix)
 }
@@ -264,13 +248,6 @@ pub fn extract_android_private_path_owner(path: &str) -> String {
     segments.next().unwrap_or_default().to_string()
 }
 
-// 规范化并换算到该用户；必须位于存储根之下（不含存储根本身）且不含遍历段，否则返回 None
-pub fn resolve_storage_child(path: &str, user_id: i32) -> Option<String> {
-    let resolved = resolve_user_path(&normalize(path), user_id);
-    let storage_prefix = format!("{}{}/", STORAGE_PREFIX, user_id);
-    (resolved.starts_with(&storage_prefix) && !has_unsafe_segments(&resolved)).then_some(resolved)
-}
-
 // 挂载到 Android 容器目录、应用私有包根目录或 sdcard 沙盒会遮住其他应用或整个沙盒，不能作为映射原目录
 pub fn is_unmountable_android_path(path: &str) -> bool {
     let normalized = normalize(path);
@@ -315,10 +292,6 @@ pub fn is_path_overlapping(first: &str, second: &str) -> bool {
     first == second
         || first.starts_with(&format!("{}/", second))
         || second.starts_with(&format!("{}/", first))
-}
-
-pub fn is_absolute(path: &str) -> bool {
-    !path.is_empty() && path.starts_with('/')
 }
 
 fn storage_user_segment(path: &str) -> Option<&str> {

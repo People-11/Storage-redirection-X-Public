@@ -3,7 +3,6 @@ use crate::domain::PathMapping;
 use crate::platform::{self, ANDROID_APP_UID_START, paths};
 use crate::redirect::policy;
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
 
 pub enum CallerRealPathMatch {
     None,
@@ -315,39 +314,19 @@ fn build_caller_mappings(caller_package: &str, caller_uid: i32) -> Vec<PathMappi
         return Vec::new();
     }
 
-    let user_id = platform::user_id_from_uid(caller_uid);
-    let storage_root = format!("/storage/emulated/{}", user_id);
-    let android_prefix = format!("{}/Android", storage_root);
-    let android_prefix_with_slash = format!("{}/", android_prefix);
-
-    let mut seen_current: HashSet<String> = HashSet::new();
-    let mut mappings: Vec<PathMapping> = Vec::new();
-
-    for mapping in raw_mappings {
-        let (Some(current_path), Some(target_path)) = (
-            paths::resolve_storage_child(&mapping.request_path, user_id),
-            paths::resolve_storage_child(&mapping.final_path, user_id),
-        ) else {
-            continue;
-        };
-        if current_path == target_path {
-            continue;
-        }
-        let is_current_android = current_path == android_prefix
-            || paths::starts_with(&current_path, &android_prefix_with_slash);
-        if is_current_android && !is_own_private_mapping_source(&current_path, caller_package) {
-            continue;
-        }
-        if target_path == android_prefix
-            || paths::starts_with(&target_path, &android_prefix_with_slash)
-        {
-            continue;
-        }
-        if !seen_current.insert(current_path.clone()) {
-            continue;
-        }
-        mappings.push(PathMapping::new(current_path, target_path));
-    }
+    // 读配置已校验并去重；代写只处理调用方自己的私有目录映射，且不改写到 Android 目录内
+    let android_prefix = format!(
+        "/storage/emulated/{}/Android",
+        platform::user_id_from_uid(caller_uid)
+    );
+    let mut mappings: Vec<PathMapping> = raw_mappings
+        .into_iter()
+        .filter(|mapping| {
+            (!paths::is_path_overlapping(&mapping.request_path, &android_prefix)
+                || is_own_private_mapping_source(&mapping.request_path, caller_package))
+                && !paths::is_path_overlapping(&mapping.final_path, &android_prefix)
+        })
+        .collect();
 
     mappings.sort_by(|a, b| {
         if a.request_path.len() != b.request_path.len() {
@@ -364,7 +343,6 @@ fn build_caller_mappings(caller_package: &str, caller_uid: i32) -> Vec<PathMappi
 fn is_own_private_mapping_source(path: &str, caller_package: &str) -> bool {
     paths::extract_android_private_path_owner(path) == caller_package
         && path.contains("/Android/data/")
-        && !paths::is_unmountable_android_path(path)
 }
 
 fn get_caller_default_redirect_target(caller_package: &str, user_id: i32) -> String {
