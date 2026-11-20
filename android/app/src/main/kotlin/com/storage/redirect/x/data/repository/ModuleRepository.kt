@@ -14,7 +14,7 @@ class ModuleRepository {
                 echo "NOT_INSTALLED"
             elif [ -f "${Paths.MODULE_DIR}/disable" ] || [ -f "${Paths.MODULE_DIR}/remove" ]; then
                 echo "DISABLED"
-            elif pidof srx_logd >/dev/null 2>&1 || ( [ -f "${Paths.LOGS_DIR}/.logd.pid" ] && kill -0 "$$(cat "${Paths.LOGS_DIR}/.logd.pid" 2>/dev/null)" 2>/dev/null ); then
+            elif pidof srx_logd >/dev/null 2>&1 || ( [ -f "${Paths.LOGS_DIR}/.logd.pid" ] && kill -0 "$(cat "${Paths.LOGS_DIR}/.logd.pid" 2>/dev/null)" 2>/dev/null ); then
                 echo "INSTALLED"
             else
                 echo "NOT_RUNNING"
