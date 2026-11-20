@@ -20,6 +20,8 @@ internal class PathBrowserState(
     val packageName: String?,
     val multiSelect: Boolean,
     val allowExclude: Boolean,
+    // 单选映射路径时，与这些路径重叠的目录会形成重复或链式映射
+    val blockedPaths: List<String> = emptyList(),
 ) {
     var currentPath by mutableStateOf("")
         private set
@@ -69,7 +71,8 @@ internal class PathBrowserState(
     fun canSelect(path: String): Boolean {
         if (path.isEmpty()) return false
         if (multiSelect) return RedirectConfig.validateRealPathRule(ruleMode.prefix + path) is PathValidationResult.Valid
-        return RedirectConfig.validateMappingPath(path, packageName) is PathValidationResult.Valid
+        return RedirectConfig.validateMappingPath(path, packageName) is PathValidationResult.Valid &&
+            blockedPaths.none { RedirectConfig.isPathOverlapping(it, path) }
     }
 
     fun navigateTo(path: String) {

@@ -172,7 +172,6 @@
     <string name="rule_config_shared_uid_hint">此应用与以下应用共享 UID，开关或配置任一应用将同步影响所有关联应用：</string>
     <string name="rule_config_save_failed">保存失败</string>
     <string name="rule_config_paths_partially_invalid">部分所选路径无效，已跳过</string>
-    <string name="rule_config_error_same_paths">当前路径和目标路径不能相同</string>
     <string name="rule_config_browser_use_current">选择当前目录</string>
     <string name="rule_config_browser_load_failed">读取目录失败</string>
     <string name="rule_config_browser_invalid_path">路径无效</string>
