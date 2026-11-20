@@ -33,11 +33,12 @@ fun PathBrowserPage(
     packageName: String? = null,
     multiSelect: Boolean = false,
     allowExclude: Boolean = false,
+    blockedPaths: List<String> = emptyList(),
     onBack: () -> Unit,
     onConfirm: (List<String>) -> Unit,
 ) {
-    val state = remember(userId, packageName, multiSelect, allowExclude) {
-        PathBrowserState(userId, packageName, multiSelect, allowExclude)
+    val state = remember(userId, packageName, multiSelect, allowExclude, blockedPaths) {
+        PathBrowserState(userId, packageName, multiSelect, allowExclude, blockedPaths)
     }
     // 页面切换取消旧协程，状态代次同时拒绝尚未返回的旧请求。
     LaunchedEffect(state, state.currentPath, state.reloadKey) {

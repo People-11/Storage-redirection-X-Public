@@ -45,34 +45,29 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 // 规则配置页、模板编辑页与应用页共用的对话框组件
 private val TEMPLATE_PICKER_MAX_HEIGHT = 360.dp
-private val MAPPING_DIALOG_FIELD_SPACING = 8.dp
 private val MAPPING_DIALOG_BOTTOM_SPACING = 16.dp
 private val MAPPING_DIALOG_BUTTON_SPACING = 12.dp
 
-// 映射对话框状态：两个路径只能经目录浏览器选择，选择时已排除受限目录
+// 映射对话框状态：两个路径只能经目录浏览器选择，选择时已排除受限、重复与链式映射的目录
 @Stable
 internal class MappingDialogState {
     var isOpen by mutableStateOf(false)
     var requestPath by mutableStateOf("")
     var finalPath by mutableStateOf("")
-    var errorResId by mutableStateOf<Int?>(null)
 
     fun open() {
         requestPath = ""
         finalPath = ""
-        errorResId = null
         isOpen = true
     }
 
     fun close() {
-        errorResId = null
         isOpen = false
     }
 
     // 浏览器返回后回到对话框
     fun pick(path: String, isRequest: Boolean) {
         if (isRequest) requestPath = path else finalPath = path
-        errorResId = null
         isOpen = true
     }
 }
@@ -106,14 +101,6 @@ internal fun AddMappingDialog(
             onClick = onPickFinal,
             modifier = Modifier.testTag("${tagPrefix}_final_picker"),
         )
-        state.errorResId?.let { errorResId ->
-            Spacer(Modifier.height(MAPPING_DIALOG_FIELD_SPACING))
-            Text(
-                text = stringResource(errorResId),
-                color = MiuixTheme.colorScheme.error,
-                style = MiuixTheme.textStyles.body2,
-            )
-        }
         Spacer(Modifier.height(MAPPING_DIALOG_BOTTOM_SPACING))
         Row {
             TextButton(
@@ -127,12 +114,8 @@ internal fun AddMappingDialog(
                 colors = ButtonDefaults.textButtonColorsPrimary(),
                 enabled = state.requestPath.isNotEmpty() && state.finalPath.isNotEmpty(),
                 onClick = {
-                    if (state.requestPath == state.finalPath) {
-                        state.errorResId = R.string.rule_config_error_same_paths
-                    } else {
-                        onConfirm(StoragePathMapping(state.requestPath, state.finalPath))
-                        state.close()
-                    }
+                    onConfirm(StoragePathMapping(state.requestPath, state.finalPath))
+                    state.close()
                 },
                 modifier = Modifier.weight(1f).testTag("${tagPrefix}_confirm"),
             )

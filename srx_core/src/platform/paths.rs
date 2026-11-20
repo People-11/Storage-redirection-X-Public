@@ -308,6 +308,15 @@ pub fn storage_to_data_media_path(path: &str) -> String {
     }
 }
 
+// 相同或互为上下级即重叠；共享存储不区分大小写
+pub fn is_path_overlapping(first: &str, second: &str) -> bool {
+    let first = first.to_ascii_lowercase();
+    let second = second.to_ascii_lowercase();
+    first == second
+        || first.starts_with(&format!("{}/", second))
+        || second.starts_with(&format!("{}/", first))
+}
+
 pub fn is_absolute(path: &str) -> bool {
     !path.is_empty() && path.starts_with('/')
 }

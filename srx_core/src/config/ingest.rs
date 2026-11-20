@@ -201,6 +201,8 @@ pub fn parse_app_config(state: &mut SettingsState, package_name: &str, json_cont
                     user_id
                 );
             }
+            user_profile.path_mappings =
+                drop_conflicting_mappings(std::mem::take(&mut user_profile.path_mappings), user_id);
         }
 
         app_profile.user_profiles.insert(user_id, user_profile);
@@ -227,6 +229,30 @@ pub fn parse_app_config(state: &mut SettingsState, package_name: &str, json_cont
 }
 
 // 仅接受纯数字
+// 与应用端一致：原目录与已保留映射的原目录重叠为重复映射，与任一目标（含自身）重叠为链式映射，按顺序保留先出现的
+fn drop_conflicting_mappings(mappings: Vec<PathMapping>, user_id: i32) -> Vec<PathMapping> {
+    let mut kept: Vec<PathMapping> = Vec::with_capacity(mappings.len());
+    for mapping in mappings {
+        let is_conflicting = paths::is_path_overlapping(&mapping.request_path, &mapping.final_path)
+            || kept.iter().any(|other| {
+                paths::is_path_overlapping(&mapping.request_path, &other.request_path)
+                    || paths::is_path_overlapping(&mapping.request_path, &other.final_path)
+                    || paths::is_path_overlapping(&mapping.final_path, &other.request_path)
+            });
+        if is_conflicting {
+            log::warn!(
+                "skip map (duplicate or chained): user={} cur={} tgt={}",
+                user_id,
+                mapping.request_path,
+                mapping.final_path
+            );
+            continue;
+        }
+        kept.push(mapping);
+    }
+    kept
+}
+
 fn try_parse_user_id(value: &str) -> Option<i32> {
     if value.is_empty() {
         return None;

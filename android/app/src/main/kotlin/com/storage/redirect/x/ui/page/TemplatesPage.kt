@@ -260,6 +260,17 @@ private fun TemplateEditorPage(
                 userId = android.os.Process.myUid() / PER_USER_UID_RANGE,
                 multiSelect = target == TemplateBrowseTarget.Path,
                 allowExclude = target == TemplateBrowseTarget.Path,
+                blockedPaths = when (target) {
+                    TemplateBrowseTarget.Path -> emptyList()
+                    TemplateBrowseTarget.MappingCurrentPath -> RedirectConfig.blockedMappingRequestPaths(
+                        currentTemplate.pathMappings,
+                        mappingDialog.finalPath,
+                    )
+                    TemplateBrowseTarget.MappingTargetPath -> RedirectConfig.blockedMappingFinalPaths(
+                        currentTemplate.pathMappings,
+                        mappingDialog.requestPath,
+                    )
+                },
                 onBack = onBrowserBack,
                 onConfirm = { paths ->
                     if (target == TemplateBrowseTarget.Path) {

@@ -49,14 +49,13 @@ data class RedirectConfig(
         // 标准化路径
         val cleanedPaths = normalizeAllowedPaths(config.allowedRealPaths)
 
-        val mappingByRequest = linkedMapOf<String, StoragePathMapping>()
-        for (mapping in config.pathMappings) {
-            val requestPath = normalizeMappingPath(mapping.requestPath, config.packageName) ?: continue
-            val finalPath = normalizeMappingPath(mapping.finalPath) ?: continue
-            if (requestPath == finalPath) continue
-            mappingByRequest[requestPath] = StoragePathMapping(requestPath, finalPath)
-        }
-        val cleanedMappings = mappingByRequest.values.sortedBy { it.requestPath }
+        val cleanedMappings = dropConflictingMappings(
+            config.pathMappings.mapNotNull { mapping ->
+                val requestPath = normalizeMappingPath(mapping.requestPath, config.packageName)
+                val finalPath = normalizeMappingPath(mapping.finalPath)
+                if (requestPath == null || finalPath == null) null else StoragePathMapping(requestPath, finalPath)
+            },
+        ).sortedBy { it.requestPath }
 
         val cleanedConfig = config.copy(
             allowedRealPaths = cleanedPaths,
@@ -178,6 +177,35 @@ data class RedirectConfig(
                 Regex(regex, RegexOption.IGNORE_CASE).matches(segment)
             }
         }
+
+        // 相同或互为上下级即重叠；共享存储不区分大小写
+        fun isPathOverlapping(first: String, second: String): Boolean =
+            first.equals(second, ignoreCase = true) ||
+                first.startsWith("$second/", ignoreCase = true) ||
+                second.startsWith("$first/", ignoreCase = true)
+
+        // 原目录与已有原目录重叠为重复映射，与任一目标（含自身）重叠为链式映射；按顺序保留先出现的映射
+        fun dropConflictingMappings(mappings: List<StoragePathMapping>): List<StoragePathMapping> {
+            val kept = mutableListOf<StoragePathMapping>()
+            for (mapping in mappings) {
+                val isConflicting = isPathOverlapping(mapping.requestPath, mapping.finalPath) ||
+                    kept.any {
+                        isPathOverlapping(mapping.requestPath, it.requestPath) ||
+                            isPathOverlapping(mapping.requestPath, it.finalPath) ||
+                            isPathOverlapping(mapping.finalPath, it.requestPath)
+                    }
+                if (!isConflicting) kept += mapping
+            }
+            return kept
+        }
+
+        // 新映射的原目录不能与这些路径重叠：已有映射的原目录和目标，以及本次已选的目标
+        fun blockedMappingRequestPaths(mappings: List<StoragePathMapping>, finalPath: String): List<String> =
+            mappings.flatMap { listOf(it.requestPath, it.finalPath) } + listOfNotNull(finalPath.ifEmpty { null })
+
+        // 新映射的目标不能与已有映射的原目录或本次已选的原目录重叠
+        fun blockedMappingFinalPaths(mappings: List<StoragePathMapping>, requestPath: String): List<String> =
+            mappings.map { it.requestPath } + listOfNotNull(requestPath.ifEmpty { null })
 
         // 标准化映射路径：仅接受普通相对路径，不支持规则前缀和通配符；privateOwner 允许该应用自己的私有子目录
         fun normalizeMappingPath(raw: String, privateOwner: String? = null): String? {

@@ -15,17 +15,17 @@ data class RedirectTemplate(
 ) {
     fun normalized(): RedirectTemplate {
         val cleanedPaths = RedirectConfig.normalizeAllowedPaths(allowedRealPaths)
-        val mappingByRequest = linkedMapOf<String, StoragePathMapping>()
-        for (mapping in pathMappings) {
-            val requestPath = RedirectConfig.normalizeMappingPath(mapping.requestPath) ?: continue
-            val finalPath = RedirectConfig.normalizeMappingPath(mapping.finalPath) ?: continue
-            if (requestPath == finalPath) continue
-            mappingByRequest[requestPath] = StoragePathMapping(requestPath, finalPath)
-        }
+        val cleanedMappings = RedirectConfig.dropConflictingMappings(
+            pathMappings.mapNotNull { mapping ->
+                val requestPath = RedirectConfig.normalizeMappingPath(mapping.requestPath)
+                val finalPath = RedirectConfig.normalizeMappingPath(mapping.finalPath)
+                if (requestPath == null || finalPath == null) null else StoragePathMapping(requestPath, finalPath)
+            },
+        )
         return copy(
             name = name.trim(),
             allowedRealPaths = cleanedPaths,
-            pathMappings = mappingByRequest.values.sortedBy { it.requestPath },
+            pathMappings = cleanedMappings.sortedBy { it.requestPath },
         )
     }
 

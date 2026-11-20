@@ -260,6 +260,13 @@ fun RuleConfigPage(
                 packageName = if (target == BrowseTarget.MappingCurrentPath) packageName else null,
                 multiSelect = target == BrowseTarget.Path,
                 allowExclude = target == BrowseTarget.Path,
+                blockedPaths = when (target) {
+                    BrowseTarget.Path -> emptyList()
+                    BrowseTarget.MappingCurrentPath ->
+                        RedirectConfig.blockedMappingRequestPaths(pathMappings, mappingDialog.finalPath)
+                    BrowseTarget.MappingTargetPath ->
+                        RedirectConfig.blockedMappingFinalPaths(pathMappings, mappingDialog.requestPath)
+                },
                 onBack = onBrowserBack,
                 onConfirm = { paths ->
                     // 允许路径走多选，映射路径走单选
