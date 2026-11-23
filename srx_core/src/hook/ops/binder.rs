@@ -1,5 +1,15 @@
 use super::super::{context, runtime};
 use libc::c_void;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+// 每次 Binder 调用都会清除与恢复身份，只保留稀疏样本
+const BINDER_IDENTITY_LOG_STEP: u64 = 4096;
+static BINDER_IDENTITY_LOG_COUNT: AtomicU64 = AtomicU64::new(0);
+
+fn next_binder_identity_log_count() -> Option<u64> {
+    let count = BINDER_IDENTITY_LOG_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+    (count == 1 || count.is_multiple_of(BINDER_IDENTITY_LOG_STEP)).then_some(count)
+}
 
 unsafe fn call_clear_calling_identity(this: *mut c_void) -> i64 {
     let self_ptr = hooked_clear_calling_identity as *mut c_void;
@@ -17,8 +27,13 @@ unsafe fn call_clear_calling_identity(this: *mut c_void) -> i64 {
 pub unsafe extern "C" fn hooked_clear_calling_identity(this: *mut c_void) -> i64 {
     super::super::caller::capture_binder_caller_uid_if_available();
     context::set_binder_identity_cleared(true);
-    let saved_uid = context::get_binder_saved_caller_uid();
-    log::debug!("binder identity cleared saved_uid={}", saved_uid);
+    if let Some(count) = next_binder_identity_log_count() {
+        log::debug!(
+            "binder identity cleared saved_uid={} n={}",
+            context::get_binder_saved_caller_uid(),
+            count
+        );
+    }
     call_clear_calling_identity(this)
 }
 
@@ -40,9 +55,12 @@ pub unsafe extern "C" fn hooked_restore_calling_identity(this: *mut c_void, toke
     call_restore_calling_identity(this, token);
     context::clear_binder_saved_caller_uid();
     context::set_binder_identity_cleared(false);
-    log::debug!(
-        "binder identity restored saved_uid={} age_ms={}",
-        saved_uid,
-        age_ms
-    );
+    if let Some(count) = next_binder_identity_log_count() {
+        log::debug!(
+            "binder identity restored saved_uid={} age_ms={} n={}",
+            saved_uid,
+            age_ms,
+            count
+        );
+    }
 }

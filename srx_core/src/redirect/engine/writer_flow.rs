@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 const WRITER_ALLOWED_LOG_STEP: u64 = 256;
 static WRITER_ALLOWED_LOG_COUNT: AtomicU64 = AtomicU64::new(0);
+static WRITER_RULE_HIT_LOG_COUNT: AtomicU64 = AtomicU64::new(0);
 
 // 系统代写进程的重定向流水线：按阶段推进，任一阶段命中即经 finish 统一记录后退出
 // 返回值第二项表示决策是否来自调用方映射
@@ -333,17 +334,21 @@ impl<'a> WriterFlow<'a> {
             // 两者的写入都交给后续沙盒回退；代写读取不走重定向，查询改写另行保留只读目录的真实条目
             rule @ (writer::CallerRealPathMatch::Excluded
             | writer::CallerRealPathMatch::ReadOnly) => {
-                log::debug!(
-                    "writer: {} hit caller={} uid={} path={}",
-                    if matches!(rule, writer::CallerRealPathMatch::Excluded) {
-                        "excl"
-                    } else {
-                        "ro"
-                    },
-                    self.effective_caller_package,
-                    self.effective_caller_uid,
-                    self.resolved_path
-                );
+                let hit_count = WRITER_RULE_HIT_LOG_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                if should_log_step(hit_count, WRITER_ALLOWED_LOG_STEP) {
+                    log::debug!(
+                        "writer: {} hit caller={} uid={} path={} n={}",
+                        if matches!(rule, writer::CallerRealPathMatch::Excluded) {
+                            "excl"
+                        } else {
+                            "ro"
+                        },
+                        self.effective_caller_package,
+                        self.effective_caller_uid,
+                        self.resolved_path,
+                        hit_count
+                    );
+                }
             }
             writer::CallerRealPathMatch::Allowed => {
                 self.allow_ms = paths::monotonic_ms().saturating_sub(allow_started_ms);
