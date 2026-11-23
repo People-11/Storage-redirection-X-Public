@@ -4,8 +4,8 @@ use super::super::stats::InterceptHub;
 use super::super::util::c_str_to_string;
 use super::super::{caller, diagnostic};
 use crate::redirect::{
-    get_caller_mappings, has_any_caller_mappings, policy, process_redirect_path,
-    record_redirect_hit, resolve_system_writer_mapped_path,
+    RedirectDecision, get_caller_mappings, has_any_caller_mappings, policy, process_redirect_path,
+    record_redirect_hit, resolve_system_writer_decision,
 };
 use libc::{c_char, c_int, c_uint, c_void};
 use std::ffi::CString;
@@ -50,10 +50,22 @@ where
         return call_original(pathname);
     }
 
-    if let Some(result) =
-        query_mapped_path_first(hub, op_name, pathname, &path_text, &call_original)
-    {
-        return result;
+    // 映射即路径替换：命中调用方映射时先查映射目标，MediaProvider 的同名检查才与实际写入位置一致；
+    // 未命中时保留这次决策，真实路径不存在时直接复用
+    let mut early_decision = None;
+    if caller_has_mappings(hub) {
+        let (decision, is_mapping_hit) = resolve_system_writer_decision(hub, &path_text);
+        if is_mapping_hit {
+            return query_mapped_target_first(
+                hub,
+                op_name,
+                pathname,
+                &path_text,
+                &decision,
+                &call_original,
+            );
+        }
+        early_decision = Some(decision);
     }
 
     let result = call_original(pathname);
@@ -61,8 +73,10 @@ where
         return result;
     }
 
-    caller::update_caller_package_for_current_thread(hub);
-    let redirect_result = process_redirect_path(hub, &path_text);
+    let redirect_result = early_decision.unwrap_or_else(|| {
+        caller::update_caller_package_for_current_thread(hub);
+        process_redirect_path(hub, &path_text)
+    });
     diagnostic::log_diag_redirect_decision(hub, op_name, &path_text, &redirect_result);
     if redirect_result.is_redirect()
         && let Ok(c_path) = CString::new(redirect_result.new_path.as_str())
@@ -76,36 +90,36 @@ where
     result
 }
 
-// 映射即路径替换：命中调用方映射时先查映射目标，MediaProvider 的同名检查才与实际写入位置一致；
-// 目标不存在再查真实路径。调用方未配置映射时返回 None，不增加决策开销
-fn query_mapped_path_first<F>(
+// 调用方未配置映射时不做提前决策，不增加查询开销
+fn caller_has_mappings(hub: &InterceptHub) -> bool {
+    if !has_any_caller_mappings() {
+        return false;
+    }
+    caller::update_caller_package_for_current_thread(hub);
+    let caller_package = hub.get_current_caller_package();
+    !caller_package.is_empty()
+        && !get_caller_mappings(&caller_package, hub.get_current_caller_uid()).is_empty()
+}
+
+// 映射目标不存在时再查真实路径
+fn query_mapped_target_first<F>(
     hub: &InterceptHub,
     op_name: &str,
     pathname: *const c_char,
     path_text: &str,
+    decision: &RedirectDecision,
     call_original: &F,
-) -> Option<c_int>
+) -> c_int
 where
     F: Fn(*const c_char) -> c_int,
 {
-    if !has_any_caller_mappings() {
-        return None;
-    }
-    caller::update_caller_package_for_current_thread(hub);
-    let caller_package = hub.get_current_caller_package();
-    if caller_package.is_empty()
-        || get_caller_mappings(&caller_package, hub.get_current_caller_uid()).is_empty()
+    if let Ok(c_mapped) = CString::new(decision.new_path.as_str())
+        && call_original(c_mapped.as_ptr()) == 0
     {
-        return None;
+        record_redirect_hit(hub, op_name, path_text, &decision.new_path);
+        return 0;
     }
-
-    let mapped_path = resolve_system_writer_mapped_path(hub, path_text)?;
-    let c_mapped = CString::new(mapped_path.as_str()).ok()?;
-    if call_original(c_mapped.as_ptr()) == 0 {
-        record_redirect_hit(hub, op_name, path_text, &mapped_path);
-        return Some(0);
-    }
-    Some(call_original(pathname))
+    call_original(pathname)
 }
 
 pub unsafe extern "C" fn hooked_stat(pathname: *const c_char, statbuf: *mut libc::stat) -> c_int {

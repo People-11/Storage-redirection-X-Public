@@ -49,20 +49,22 @@ pub fn process_redirect_path(hub: &InterceptHub, pathname: &str) -> RedirectDeci
     .0
 }
 
-// 代写进程内仅当决策来自调用方映射时返回映射目标
-pub fn resolve_system_writer_mapped_path(hub: &InterceptHub, pathname: &str) -> Option<String> {
+// 代写进程内的重定向决策，同时返回决策是否来自调用方映射
+pub fn resolve_system_writer_decision(
+    hub: &InterceptHub,
+    pathname: &str,
+) -> (RedirectDecision, bool) {
     let self_uid = unsafe { libc::getuid() as i32 };
     let package_name = hub.get_package_name();
     let is_shared_uid = policy::is_shared_uid_process(self_uid);
-    let (decision, is_mapping_hit) = writer_flow::run(
+    writer_flow::run(
         hub,
         pathname,
         &package_name,
         self_uid,
         is_shared_uid,
         paths::monotonic_ms(),
-    );
-    is_mapping_hit.then_some(decision.new_path)
+    )
 }
 
 pub fn record_redirect_hit(hub: &InterceptHub, op_name: &str, from_path: &str, to_path: &str) {
