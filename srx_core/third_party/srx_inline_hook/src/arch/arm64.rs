@@ -52,8 +52,6 @@ pub struct Insn {
 pub struct Rewritten {
     pub bytes: Vec<u8>,
     pub consumed: usize,
-    // 每条原指令重写后的字节数；fix_addr 查表使用
-    pub inst_lens: Vec<usize>,
 }
 
 pub fn decode(raw: u32) -> Insn {
@@ -140,7 +138,6 @@ pub fn rewrite(bytes: &[u8], pc_src: u64, pc_dst: u64) -> Result<Rewritten, Errn
     Ok(Rewritten {
         bytes: out,
         consumed: total_insns * 4,
-        inst_lens,
     })
 }
 

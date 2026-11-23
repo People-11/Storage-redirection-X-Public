@@ -108,8 +108,8 @@ fn occupy_slot(tid: i32) -> Result<(usize, bool), Errno> {
     {
         return Ok((index, false));
     }
-    for i in 0..MAX_PROTECTED_THREADS {
-        if SLOTS.tids[i]
+    for (i, slot) in SLOTS.tids.iter().enumerate() {
+        if slot
             .compare_exchange(0, tid, Ordering::AcqRel, Ordering::Relaxed)
             .is_ok()
         {

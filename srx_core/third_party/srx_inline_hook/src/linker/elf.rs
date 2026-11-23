@@ -97,14 +97,10 @@ struct ISzAlloc {
     free: extern "C" fn(*const ISzAlloc, *mut c_void),
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ECoderStatus {
-    NotSpecified = 0,
-    FinishedWithMark = 1,
-    NotFinished = 2,
-    NeedsMoreInput = 3,
-}
+// ELzmaStatus 由 C 侧写入，按整数读取避免出现 Rust 枚举未声明的取值
+type ECoderStatus = c_int;
+const LZMA_STATUS_NOT_SPECIFIED: ECoderStatus = 0;
+const LZMA_STATUS_NOT_FINISHED: ECoderStatus = 2;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -488,7 +484,7 @@ fn decompress_gnu_debugdata(src: &[u8]) -> Option<Vec<u8>> {
                 return None;
             }
         };
-        let mut status = ECoderStatus::NotSpecified;
+        let mut status = LZMA_STATUS_NOT_SPECIFIED;
         // SAFETY: 偏移在 dst/src 范围内；指针由 ptr::add 计算
         let result = unsafe {
             if api_level >= 29 {
@@ -520,7 +516,7 @@ fn decompress_gnu_debugdata(src: &[u8]) -> Option<Vec<u8>> {
         }
         total_out += dst_room;
         src_offset += src_room;
-        if status != ECoderStatus::NotFinished {
+        if status != LZMA_STATUS_NOT_FINISHED {
             break;
         }
         if dst_room == 0 && src_room == 0 {

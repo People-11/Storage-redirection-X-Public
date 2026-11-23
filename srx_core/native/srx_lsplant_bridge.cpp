@@ -230,7 +230,7 @@ void *ResolveDefaultSymbol(const char *name) {
 int SrxFuseFixInstall(void *reply_open_slot, void *reply_create_slot,
                       void *passthrough_enable_slot,
                       void *passthrough_open_slot) {
-  if (srx_inline_hook_init(SRX_INLINE_HOOK_MODE_UNIQUE, false) != 0)
+  if (srx_inline_hook_init(false) != 0)
     return -1;
 
   std::lock_guard lock(g_hook_mutex);
@@ -339,7 +339,7 @@ extern "C" int srx_fuse_fix_install(void *reply_open_slot,
 extern "C" bool srx_lsplant_init(JNIEnv *env) {
   if (env == nullptr)
     return false;
-  if (srx_inline_hook_init(SRX_INLINE_HOOK_MODE_UNIQUE, false) != 0)
+  if (srx_inline_hook_init(false) != 0)
     return false;
 
   lsplant::InitInfo info{

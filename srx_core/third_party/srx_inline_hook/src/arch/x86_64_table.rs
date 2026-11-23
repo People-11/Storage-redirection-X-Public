@@ -5,8 +5,6 @@ pub(super) enum ImmKind {
     None,
     I8,
     I16,
-    I32,
-    I64,
     OpSz16or32,
     OpSz16or32or64,
     Rel8,

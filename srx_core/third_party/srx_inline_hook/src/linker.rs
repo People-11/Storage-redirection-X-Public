@@ -12,9 +12,7 @@ mod prelude {
 
     pub(super) use crate::android;
     pub(super) use crate::api::{self, HookStub};
-    pub(super) use crate::dlcb;
     pub(super) use crate::errno::Errno;
-    pub(super) use crate::pending;
     pub(super) use crate::util;
 
     pub(super) use super::elf::{
@@ -27,13 +25,7 @@ mod elf;
 mod hook;
 mod lookup;
 
-pub(crate) use elf::path_name_matches;
-pub use hook::{
-    install_linker_hooks, linker_ctor_hit_count, linker_dtor_hit_count, linker_hook_stub_count,
-    linker_hooks_installed, reset_linker_hook_counters,
-};
+pub use hook::install_linker_hooks;
 pub(crate) use lookup::{
-    LoadedSymbolLookup, find_loaded_symbol, find_loaded_symbol_by_symtab, find_symbol_in_dlinfo,
-    has_loaded_library,
+    LoadedSymbolLookup, find_loaded_symbol, find_loaded_symbol_by_symtab, has_loaded_library,
 };
-pub use lookup::{find_linker_symbol, find_linker_symbol_by_symtab, find_linker64_base};

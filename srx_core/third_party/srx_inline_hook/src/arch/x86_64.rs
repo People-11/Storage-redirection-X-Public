@@ -21,19 +21,10 @@ pub enum InsnKind {
 #[derive(Debug, Clone, Copy)]
 pub struct Insn {
     pub len: usize,
-    pub has_66: bool,
-    pub rex: Option<u8>,
     pub opcode: [u8; 3],
-    pub opcode_len: u8,
-    pub has_modrm: bool,
-    pub modrm: u8,
-    pub has_sib: bool,
-    pub sib: u8,
     pub disp_off: u8,
-    pub disp_size: u8,
     pub imm_off: u8,
     pub imm_size: u8,
-    pub is_rip_relative: bool,
     pub kind: InsnKind,
 }
 
@@ -55,7 +46,7 @@ pub fn decode(bytes: &[u8]) -> Result<Insn, Errno> {
     if matches!(bytes[0], 0xC4 | 0xC5) {
         return Err(Errno::RewriteUnsupported);
     }
-    // 0x62 在 64 位下是 EVEX 前缀（AVX-512）；单测已覆盖失败路径，保留拒绝
+    // 0x62 在 64 位下是 EVEX 前缀（AVX-512），同样拒绝
     if bytes[0] == 0x62 {
         return Err(Errno::RewriteUnsupported);
     }
@@ -93,7 +84,6 @@ pub fn decode(bytes: &[u8]) -> Result<Insn, Errno> {
     }
 
     let mut opcode = [0u8; 3];
-    let opcode_len;
     let info;
 
     let b0 = bytes[cur];
@@ -120,34 +110,25 @@ pub fn decode(bytes: &[u8]) -> Result<Insn, Errno> {
                 kind: InsnKind::Other,
                 supported: true,
             };
-            opcode_len = 3;
         } else {
             info = TABLE_0F[b1 as usize];
-            opcode_len = 2;
         }
     } else {
         info = TABLE_1B[b0 as usize];
-        opcode_len = 1;
     }
 
     if !info.supported {
         return Err(Errno::RewriteUnsupported);
     }
 
-    let mut has_modrm = false;
-    let mut modrm = 0u8;
-    let mut has_sib = false;
-    let mut sib = 0u8;
     let mut disp_off = 0u8;
-    let mut disp_size = 0u8;
     let mut is_rip_relative = false;
 
     if info.modrm {
         if cur >= bytes.len() {
             return Err(Errno::RewriteUnsupported);
         }
-        modrm = bytes[cur];
-        has_modrm = true;
+        let modrm = bytes[cur];
         cur += 1;
         let mod_f = modrm >> 6;
         let rm = modrm & 0b111;
@@ -157,28 +138,23 @@ pub fn decode(bytes: &[u8]) -> Result<Insn, Errno> {
             if cur >= bytes.len() {
                 return Err(Errno::RewriteUnsupported);
             }
-            sib = bytes[cur];
-            has_sib = true;
+            let sib = bytes[cur];
             cur += 1;
             if mod_f == 0b00 && (sib & 0b111) == 0b101 {
                 disp_off = cur as u8;
-                disp_size = 4;
                 cur += 4;
             }
         } else if mod_f == 0b00 && rm == 0b101 {
             // 64 位模式：[RIP + disp32]
             disp_off = cur as u8;
-            disp_size = 4;
             is_rip_relative = true;
             cur += 4;
         }
         if mod_f == 0b01 {
             disp_off = cur as u8;
-            disp_size = 1;
             cur += 1;
         } else if mod_f == 0b10 {
             disp_off = cur as u8;
-            disp_size = 4;
             cur += 4;
         }
 
@@ -192,8 +168,7 @@ pub fn decode(bytes: &[u8]) -> Result<Insn, Errno> {
         ImmKind::None => 0,
         ImmKind::I8 | ImmKind::Rel8 => 1,
         ImmKind::I16 => 2,
-        ImmKind::I32 | ImmKind::Rel32 => 4,
-        ImmKind::I64 => 8,
+        ImmKind::Rel32 => 4,
         ImmKind::OpSz16or32 => {
             if has_66 {
                 2
@@ -224,19 +199,10 @@ pub fn decode(bytes: &[u8]) -> Result<Insn, Errno> {
 
     Ok(Insn {
         len: cur,
-        has_66,
-        rex,
         opcode,
-        opcode_len,
-        has_modrm,
-        modrm,
-        has_sib,
-        sib,
         disp_off,
-        disp_size,
         imm_off,
         imm_size,
-        is_rip_relative,
         kind,
     })
 }
@@ -259,7 +225,6 @@ pub fn rewrite(bytes: &[u8], pc_src: u64, pc_dst: u64) -> Result<Rewritten, Errn
             src_off: consumed,
             orig_len: insn.len,
             new_off: new_total,
-            new_len,
         });
         consumed += insn.len;
         new_total += new_len;
@@ -332,7 +297,6 @@ struct InsnInfo {
     src_off: usize,
     orig_len: usize,
     new_off: usize,
-    new_len: usize,
 }
 
 fn rewrite_one(

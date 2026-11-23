@@ -7,8 +7,6 @@ const LINKER_SYM_CALL_DESTRUCTORS_M: &CStr = c"__dl__ZN6soinfo16call_destructors
 
 static LINKER_CTORS_STUB: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
 static LINKER_DTORS_STUB: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
-static LINKER_CTORS_HITS: AtomicUsize = AtomicUsize::new(0);
-static LINKER_DTORS_HITS: AtomicUsize = AtomicUsize::new(0);
 static SOINFO_SCAN_ACTIVE: AtomicBool = AtomicBool::new(false);
 static SOINFO_SCAN_OK: AtomicBool = AtomicBool::new(false);
 static SOINFO_OFFSET_PHDR: AtomicUsize = AtomicUsize::new(usize::MAX);
@@ -18,165 +16,85 @@ static SOINFO_OFFSET_NAME: AtomicUsize = AtomicUsize::new(usize::MAX);
 static SOINFO_OFFSET_CONSTRUCTORS_CALLED: AtomicUsize = AtomicUsize::new(usize::MAX);
 
 pub fn install_linker_hooks() -> Result<(), Errno> {
-    if !LINKER_CTORS_STUB.load(Ordering::Acquire).is_null()
-        && !LINKER_DTORS_STUB.load(Ordering::Acquire).is_null()
-    {
-        return Ok(());
-    }
-
-    let ctors = find_linker_symbol_by_symtab(LINKER_SYM_CALL_CONSTRUCTORS_M)
-        .ok_or(Errno::DlSymFailed)? as *mut c_void;
-    let dtors = find_linker_symbol_by_symtab(LINKER_SYM_CALL_DESTRUCTORS_M)
-        .ok_or(Errno::DlSymFailed)? as *mut c_void;
-
-    if LINKER_CTORS_STUB.load(Ordering::Acquire).is_null() {
-        // SAFETY: ctors 是 linker64 内有效函数入口；proxy ABI 与 soinfo 成员函数保持单参调用约定
-        let stub = unsafe {
-            api::hook_with_orig(
-                ctors,
-                linker_call_constructors_proxy as *const c_void,
-                ptr::null_mut(),
-            )
-        }?;
-        LINKER_CTORS_STUB.store(stub.handle, Ordering::Release);
-    }
-
-    if LINKER_DTORS_STUB.load(Ordering::Acquire).is_null() {
-        // SAFETY: dtors 同上
-        let stub = unsafe {
-            api::hook_with_orig(
-                dtors,
-                linker_call_destructors_proxy as *const c_void,
-                ptr::null_mut(),
-            )
-        }?;
-        LINKER_DTORS_STUB.store(stub.handle, Ordering::Release);
-    }
-
-    warm_up_soinfo_scan()?;
+    install_linker_hook(
+        &LINKER_CTORS_STUB,
+        LINKER_SYM_CALL_CONSTRUCTORS_M,
+        linker_call_constructors_proxy as *const c_void,
+    )?;
+    install_linker_hook(
+        &LINKER_DTORS_STUB,
+        LINKER_SYM_CALL_DESTRUCTORS_M,
+        linker_call_destructors_proxy as *const c_void,
+    )?;
+    warm_up_soinfo_scan();
     Ok(())
 }
 
-pub fn linker_hooks_installed() -> bool {
-    !LINKER_CTORS_STUB.load(Ordering::Acquire).is_null()
-        && !LINKER_DTORS_STUB.load(Ordering::Acquire).is_null()
+fn install_linker_hook(
+    stub_slot: &AtomicPtr<c_void>,
+    symbol: &CStr,
+    proxy: *const c_void,
+) -> Result<(), Errno> {
+    if !stub_slot.load(Ordering::Acquire).is_null() {
+        return Ok(());
+    }
+    let target = find_linker_symbol_by_symtab(symbol).ok_or(Errno::DlSymFailed)? as *mut c_void;
+    // SAFETY: target 是 linker64 内有效函数入口；proxy ABI 与 soinfo 成员函数保持单参调用约定
+    let stub = unsafe { api::hook_sym_addr(target, proxy, ptr::null_mut()) }?;
+    stub_slot.store(stub.handle, Ordering::Release);
+    Ok(())
 }
 
-pub fn linker_ctor_hit_count() -> usize {
-    LINKER_CTORS_HITS.load(Ordering::Acquire)
-}
-
-pub fn linker_dtor_hit_count() -> usize {
-    LINKER_DTORS_HITS.load(Ordering::Acquire)
-}
-
-pub fn linker_hook_stub_count() -> usize {
-    usize::from(!LINKER_CTORS_STUB.load(Ordering::Acquire).is_null())
-        + usize::from(!LINKER_DTORS_STUB.load(Ordering::Acquire).is_null())
-}
-
-pub fn reset_linker_hook_counters() {
-    LINKER_CTORS_HITS.store(0, Ordering::Release);
-    LINKER_DTORS_HITS.store(0, Ordering::Release);
-}
-
-extern "C" fn linker_call_constructors_proxy(soinfo: *mut c_void) {
-    LINKER_CTORS_HITS.fetch_add(1, Ordering::AcqRel);
-
-    let do_scan = SOINFO_SCAN_ACTIVE.load(Ordering::Acquire);
-    let callbacks_registered = dlcb::has_init_callbacks();
-    let mut dlinfo = libc::dl_phdr_info {
+fn empty_dlinfo() -> libc::dl_phdr_info {
+    libc::dl_phdr_info {
         dlpi_addr: 0,
         dlpi_name: ptr::null(),
         dlpi_phdr: ptr::null(),
         dlpi_phnum: 0,
-        #[cfg(any(target_os = "linux", target_os = "android"))]
         dlpi_adds: 0,
-        #[cfg(any(target_os = "linux", target_os = "android"))]
         dlpi_subs: 0,
-        #[cfg(any(target_os = "linux", target_os = "android"))]
         dlpi_tls_modid: 0,
-        #[cfg(any(target_os = "linux", target_os = "android"))]
         dlpi_tls_data: ptr::null_mut(),
-    };
-    let scan_pre_ok = do_scan && scan_soinfo_pre(soinfo, &mut dlinfo).is_ok();
-    let scan_process_ok = scan_pre_ok && !dlinfo.dlpi_name.is_null();
-    let steady_process_ok = !do_scan
-        && SOINFO_SCAN_OK.load(Ordering::Acquire)
-        && soinfo_is_loading(soinfo).unwrap_or(false)
-        && soinfo_to_dlinfo(soinfo, &mut dlinfo).is_ok();
-    let can_process = scan_process_ok || steady_process_ok;
-
-    if can_process {
-        pending::try_pending_from_info(&mut dlinfo, size_of::<libc::dl_phdr_info>());
-        if callbacks_registered {
-            dlcb::dispatch_init_pre(&mut dlinfo, size_of::<libc::dl_phdr_info>());
-        }
     }
+}
+
+// 构造阶段只用于学习 soinfo 字段偏移，学到后由析构阶段识别被卸载的 so
+extern "C" fn linker_call_constructors_proxy(soinfo: *mut c_void) {
+    let scan_pre_ok = SOINFO_SCAN_ACTIVE.load(Ordering::Acquire) && scan_soinfo_pre(soinfo).is_ok();
 
     call_prev_soinfo(LINKER_CTORS_STUB.load(Ordering::Acquire), soinfo);
 
     if scan_pre_ok {
         scan_soinfo_post(soinfo);
     }
-    if can_process && callbacks_registered && !dlinfo.dlpi_name.is_null() {
-        dlcb::dispatch_init_post(&mut dlinfo, size_of::<libc::dl_phdr_info>());
-    }
 }
 
 extern "C" fn linker_call_destructors_proxy(soinfo: *mut c_void) {
-    LINKER_DTORS_HITS.fetch_add(1, Ordering::AcqRel);
-
-    let can_process = SOINFO_SCAN_OK.load(Ordering::Acquire);
-    let can_dispatch = can_process && dlcb::has_fini_callbacks();
-    let mut dlinfo = libc::dl_phdr_info {
-        dlpi_addr: 0,
-        dlpi_name: ptr::null(),
-        dlpi_phdr: ptr::null(),
-        dlpi_phnum: 0,
-        #[cfg(any(target_os = "linux", target_os = "android"))]
-        dlpi_adds: 0,
-        #[cfg(any(target_os = "linux", target_os = "android"))]
-        dlpi_subs: 0,
-        #[cfg(any(target_os = "linux", target_os = "android"))]
-        dlpi_tls_modid: 0,
-        #[cfg(any(target_os = "linux", target_os = "android"))]
-        dlpi_tls_data: ptr::null_mut(),
-    };
-    let do_process = can_process
+    let mut dlinfo = empty_dlinfo();
+    let do_process = SOINFO_SCAN_OK.load(Ordering::Acquire)
         && soinfo_to_dlinfo(soinfo, &mut dlinfo).is_ok()
         && dlinfo.dlpi_addr != 0
         && !dlinfo.dlpi_name.is_null()
-        && soinfo_is_loading(soinfo).map(|v| !v).unwrap_or(false);
-
-    if do_process && can_dispatch {
-        dlcb::dispatch_fini_pre(&mut dlinfo, size_of::<libc::dl_phdr_info>());
-    }
+        && soinfo_is_loading(soinfo).is_ok_and(|loading| !loading);
 
     call_prev_soinfo(LINKER_DTORS_STUB.load(Ordering::Acquire), soinfo);
 
     if do_process {
         api::cleanup_hooks_for_dlinfo(&dlinfo);
-        pending::reset_after_dlclose(&dlinfo);
-        if can_dispatch {
-            dlcb::dispatch_fini_post(&mut dlinfo, size_of::<libc::dl_phdr_info>());
-        }
     }
 }
 
-fn warm_up_soinfo_scan() -> Result<(), Errno> {
-    if SOINFO_SCAN_OK.load(Ordering::Acquire) {
-        return Ok(());
+fn warm_up_soinfo_scan() {
+    if !SOINFO_SCAN_OK.load(Ordering::Acquire) {
+        SOINFO_SCAN_ACTIVE.store(true, Ordering::Release);
     }
-    SOINFO_SCAN_ACTIVE.store(true, Ordering::Release);
-    Ok(())
 }
 
 fn call_prev_soinfo(stub: *mut c_void, soinfo: *mut c_void) {
     if stub.is_null() {
         return;
     }
-    let Ok(prev) = (unsafe { api::prev_func(HookStub { handle: stub }) }) else {
+    let Ok(prev) = api::prev_func(HookStub { handle: stub }) else {
         return;
     };
     // SAFETY: prev_func 返回 trampoline，ABI 与 soinfo 成员函数保持单参调用约定
@@ -184,15 +102,15 @@ fn call_prev_soinfo(stub: *mut c_void, soinfo: *mut c_void) {
     orig(soinfo);
 }
 
-fn scan_soinfo_pre(soinfo: *mut c_void, out: &mut libc::dl_phdr_info) -> Result<(), Errno> {
+// 本次 soinfo 命中已加载 so 的特征并学全偏移时返回 Ok
+fn scan_soinfo_pre(soinfo: *mut c_void) -> Result<(), Errno> {
     let probes = loaded_scan_infos();
     if probes.is_empty() {
         return Err(Errno::DlInfoFailed);
     }
 
     let word = size_of::<usize>();
-    let mut matched_name = ptr::null();
-    let mut matched_probe = None;
+    let mut matched = false;
     let mut i = 0usize;
     while i < word * 96 {
         let val0 = read_word(soinfo, i).ok_or(Errno::DlInfoFailed)?;
@@ -222,8 +140,7 @@ fn scan_soinfo_pre(soinfo: *mut c_void, out: &mut libc::dl_phdr_info) -> Result<
                 SOINFO_OFFSET_LOAD_BIAS.store(i, Ordering::Release);
                 SOINFO_OFFSET_NAME.store(i + word, Ordering::Release);
                 SOINFO_OFFSET_CONSTRUCTORS_CALLED.store(i + word * 5, Ordering::Release);
-                matched_name = val1 as *const c_char;
-                matched_probe = Some((probe.load_bias, probe.phdr, probe.phnum));
+                matched = true;
             }
         }
 
@@ -252,16 +169,9 @@ fn scan_soinfo_pre(soinfo: *mut c_void, out: &mut libc::dl_phdr_info) -> Result<
         i += word;
     }
 
-    if !soinfo_offsets_ready() {
+    if !matched || !soinfo_offsets_ready() {
         return Err(Errno::DlInfoFailed);
     }
-    let Some((load_bias, phdr, phnum)) = matched_probe else {
-        return Err(Errno::DlInfoFailed);
-    };
-    out.dlpi_addr = load_bias as _;
-    out.dlpi_name = matched_name;
-    out.dlpi_phdr = phdr;
-    out.dlpi_phnum = phnum as _;
     Ok(())
 }
 

@@ -6,7 +6,7 @@ use super::image::FuseJniImage;
 use super::strings::{CxxString, Layout, StringAbi, read_cxx_string};
 use crate::config::SettingsHub;
 use once_cell::sync::OnceCell;
-use srx_inline_hook::{HookMode, hook_sym_addr, init};
+use srx_inline_hook::{hook_sym_addr, init};
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -60,7 +60,7 @@ pub fn run() -> bool {
     if INIT_OK.load(Ordering::Acquire) {
         return true;
     }
-    if let Err(e) = init(HookMode::Unique, false) {
+    if let Err(e) = init(false) {
         log::warn!("fuse fixer init failed err={:?}", e);
         return false;
     }

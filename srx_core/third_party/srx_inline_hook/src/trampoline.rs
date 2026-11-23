@@ -53,6 +53,7 @@ fn monotonic_secs() -> u32 {
     (ts.tv_sec as u32).wrapping_add(24 * 60 * 60)
 }
 
+#[cfg(not(target_arch = "aarch64"))]
 pub fn acquire() -> Result<NonNull<u8>, Errno> {
     let mut pages = POOL.pages.lock().map_err(|_| Errno::NotSupport)?;
     let now = monotonic_secs();
@@ -179,6 +180,7 @@ fn try_alloc_in_page(page: &mut Page, now: u32) -> Option<NonNull<u8>> {
     None
 }
 
+#[cfg(not(target_arch = "aarch64"))]
 fn new_page() -> Result<Page, Errno> {
     new_page_at(ptr::null_mut())
 }
@@ -234,42 +236,4 @@ pub fn release(addr: NonNull<u8>) -> Result<(), Errno> {
         }
     }
     Err(Errno::UnhookTrampoMismatch)
-}
-
-// 诊断快照：pages/总 slot/占用/冷却/可立即复用
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct TrampolineStats {
-    pub pages: usize,
-    pub slots_total: usize,
-    pub slots_used: usize,
-    pub slots_cooldown: usize,
-    pub slots_free: usize,
-}
-
-pub fn stats() -> TrampolineStats {
-    let Ok(pages) = POOL.pages.lock() else {
-        return TrampolineStats::default();
-    };
-    let now = monotonic_secs();
-    let mut s = TrampolineStats {
-        pages: pages.len(),
-        ..TrampolineStats::default()
-    };
-    for page in pages.iter() {
-        s.slots_total += page.slot_count;
-        for i in 0..page.slot_count {
-            let f = page.flags[i];
-            if f >> 31 != 0 {
-                s.slots_used += 1;
-                continue;
-            }
-            let ts = f & 0x7FFF_FFFF;
-            if ts != 0 && (now <= ts || now - ts <= REUSE_DELAY_SECS) {
-                s.slots_cooldown += 1;
-            } else {
-                s.slots_free += 1;
-            }
-        }
-    }
-    s
 }

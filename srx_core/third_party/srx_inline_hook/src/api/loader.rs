@@ -31,7 +31,7 @@ pub unsafe fn sh_dlopen(lib_name: &CStr) -> *mut c_void {
         return ptr::null_mut();
     }
     let lib_ptr = lib_name.as_ptr();
-    let raw = if runtime::get_init_errno() != Errno::Ok {
+    let raw = if !runtime::is_ready() {
         // SAFETY: 未 init 时绕过 guard 直接走 bionic linker
         unsafe { libc::dlopen(lib_ptr, libc::RTLD_NOW) }
     } else {
@@ -69,7 +69,7 @@ pub unsafe fn sh_dlclose(handle: *mut c_void) {
     if raw.is_null() {
         return;
     }
-    if runtime::get_init_errno() != Errno::Ok {
+    if !runtime::is_ready() {
         // SAFETY: 未 init 时绕过 guard
         unsafe {
             libc::dlclose(raw);
@@ -80,14 +80,14 @@ pub unsafe fn sh_dlclose(handle: *mut c_void) {
     let _ = unsafe { bytesig::guard(|| libc::dlclose(raw)) };
 }
 
-pub unsafe fn sh_dlsym_dynsym(handle: *mut c_void, sym_name: &CStr) -> *mut c_void {
+unsafe fn sh_dlsym_dynsym(handle: *mut c_void, sym_name: &CStr) -> *mut c_void {
     if handle.is_null() || sym_name.to_bytes().is_empty() {
         return ptr::null_mut();
     }
     let sym_ptr = sym_name.as_ptr();
     // SAFETY: handle 来自 sh_dlopen 分配的 DlHandle
     if let Some(raw) = unsafe { dl_handle_raw(handle) } {
-        if runtime::get_init_errno() != Errno::Ok {
+        if !runtime::is_ready() {
             // SAFETY: 未 init 分支
             return unsafe { libc::dlsym(raw, sym_ptr) };
         }
@@ -108,17 +108,17 @@ pub unsafe fn sh_dlsym_dynsym(handle: *mut c_void, sym_name: &CStr) -> *mut c_vo
 
 pub unsafe fn sh_dlsym(handle: *mut c_void, sym_name: &CStr) -> *mut c_void {
     let dynsym = unsafe { sh_dlsym_dynsym(handle, sym_name) };
-    if !dynsym.is_null() || runtime::get_init_errno() != Errno::Ok {
+    if !dynsym.is_null() || !runtime::is_ready() {
         return dynsym;
     }
     unsafe { sh_dlsym_symtab(handle, sym_name) }
 }
 
-pub unsafe fn sh_dlsym_symtab(handle: *mut c_void, sym_name: &CStr) -> *mut c_void {
+unsafe fn sh_dlsym_symtab(handle: *mut c_void, sym_name: &CStr) -> *mut c_void {
     if handle.is_null() || sym_name.to_bytes().is_empty() {
         return ptr::null_mut();
     }
-    if runtime::get_init_errno() != Errno::Ok {
+    if !runtime::is_ready() {
         return ptr::null_mut();
     }
     // SAFETY: handle 来自 sh_dlopen 分配的 DlHandle
@@ -131,5 +131,3 @@ pub unsafe fn sh_dlsym_symtab(handle: *mut c_void, sym_name: &CStr) -> *mut c_vo
         _ => ptr::null_mut(),
     }
 }
-
-// 全局禁用开关；开启后新 hook 请求一律返 Disabled，已存活 hook 不受影响

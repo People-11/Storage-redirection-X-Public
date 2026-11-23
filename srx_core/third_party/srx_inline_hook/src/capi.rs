@@ -1,34 +1,41 @@
-// C FFI 层：导出 srx_inline_hook_* 供 Android app / JNI 调用
-// 错误通过 tls_errno 传递，C 侧调 _get_errno 读取最近结果
+// C FFI 层：只导出 LSPlant 桥接使用的 init、hook_func_addr 与 unhook
 
-mod common;
-mod prelude {
-    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
-    pub(super) use core::arch::global_asm;
-    pub(super) use core::ffi::{CStr, c_char, c_int, c_void};
-    pub(super) use core::ptr;
+use core::ffi::{c_int, c_void};
+use core::ptr;
 
-    pub(super) use crate::android;
-    pub(super) use crate::api::{self, HookMode, HookStub, HookedCallback};
-    pub(super) use crate::dlcb::{self, DlInfoCallback};
-    pub(super) use crate::errno::Errno;
-    pub(super) use crate::intercept::{INTERCEPT_FLAG_RECORD, Interceptor};
-    pub(super) use crate::recorder::RecordItems;
-    pub(super) use crate::shared_stack;
-    pub(super) use crate::stub;
-    pub(super) use crate::switch::SwitchMode;
-    pub(super) use crate::tls_errno;
-    pub(super) use crate::util::cstr_from_ptr_no_libc;
-    pub(super) use crate::version;
+use crate::api::{self, HookStub};
+use crate::errno::Errno;
 
-    pub(super) use super::common::{
-        errmsg_cstr, parse_record_names, sanitize_name_arg, stub_or_null,
-    };
+#[unsafe(no_mangle)]
+pub extern "C" fn srx_inline_hook_init(debuggable: bool) -> c_int {
+    match api::init(debuggable) {
+        Ok(()) => Errno::Ok as c_int,
+        Err(e) => e as c_int,
+    }
 }
 
-mod dl_callbacks;
-mod hook_addr;
-mod hook_name;
-mod intercept;
-mod records;
-mod state;
+// orig_addr 可为 NULL；返回 stub 或 NULL
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srx_inline_hook_hook_func_addr(
+    func_addr: *mut c_void,
+    new_addr: *mut c_void,
+    orig_addr: *mut *mut c_void,
+) -> *mut c_void {
+    // SAFETY: func_addr / new_addr 为本进程有效代码地址；orig_addr 为 NULL 或可写槽
+    match unsafe { api::hook_sym_addr(func_addr, new_addr, orig_addr as *mut *const c_void) } {
+        Ok(s) => s.handle,
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srx_inline_hook_unhook(stub: *mut c_void) -> c_int {
+    if stub.is_null() {
+        return -1;
+    }
+    // SAFETY: stub 来自先前 hook_func_addr 返回值，调用方保留到 unhook 完成
+    match unsafe { api::unhook(HookStub { handle: stub }) } {
+        Ok(()) => 0,
+        Err(_) => -1,
+    }
+}
