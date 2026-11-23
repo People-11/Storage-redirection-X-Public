@@ -82,11 +82,5 @@ pub fn refresh_provider_libraries() {
     }
     let _guard = context::ReentryGuard::enter();
     let (status, errors) = srx_hook::refresh();
-    if !status.is_ok() || !errors.is_empty() {
-        log::warn!(
-            "provider library refresh err={:?} modules={}",
-            status,
-            errors.len()
-        );
-    }
+    stats::log_refresh_result("provider library refresh", status, &errors);
 }

@@ -49,6 +49,24 @@ impl AtomicStats {
     }
 }
 
+pub(super) fn log_refresh_result(
+    label: &str,
+    status: srx_hook::SrxHookErrno,
+    errors: &[srx_hook::RefreshError],
+) {
+    for error in errors {
+        log::warn!(
+            "{} module failed path={} err={:?}",
+            label,
+            error.module_path,
+            error.errno
+        );
+    }
+    if !status.is_ok() {
+        log::warn!("{} failed err={:?}", label, status);
+    }
+}
+
 impl InterceptHub {
     pub fn instance() -> &'static InterceptHub {
         &INTERCEPT_HUB
@@ -150,7 +168,6 @@ impl InterceptHub {
 
         let entries = build_hook_entries();
         let mut hook_list: Vec<&'static str> = Vec::new();
-        let mut is_success = true;
 
         for entry in entries {
             if !is_hook_enabled(profile_mask, entry.profile_mask) {
@@ -165,21 +182,21 @@ impl InterceptHub {
                 std::ptr::null_mut(),
             );
 
+            // 单个符号失败只影响对应操作，其余 Hook 仍需生效
             if stub.is_none() {
                 if entry.is_optional {
                     log::warn!("optional hook unavailable sym={}", entry.symbol);
-                    continue;
+                } else {
+                    log::warn!("hook register failed sym={}", entry.symbol);
                 }
-                log::warn!("hook register failed sym={}", entry.symbol);
-                is_success = false;
                 continue;
             }
 
             hook_list.push(entry.symbol);
         }
 
-        if !is_success {
-            log::warn!("some hooks failed to register");
+        if hook_list.is_empty() {
+            log::warn!("no hooks registered");
             return false;
         }
 
@@ -190,19 +207,10 @@ impl InterceptHub {
             hook_list_text
         );
 
+        // 已注册的任务会在后续刷新中继续应用，单个模块失败不放弃整体安装
         log::info!("hook refresh");
         let (refresh_errno, refresh_errors) = srx_hook::refresh();
-        for err in &refresh_errors {
-            log::warn!(
-                "module resolve failed path={} err={:?}",
-                err.module_path,
-                err.errno
-            );
-        }
-        if !refresh_errno.is_ok() {
-            log::warn!("hook refresh failed err={:?}", refresh_errno);
-            return false;
-        }
+        log_refresh_result("hook refresh", refresh_errno, &refresh_errors);
 
         self.is_hooks_installed.store(true, Ordering::Relaxed);
         log::info!("hook install done");
