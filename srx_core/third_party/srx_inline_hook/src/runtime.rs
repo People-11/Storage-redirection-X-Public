@@ -1,6 +1,8 @@
 // 进程级运行时状态：调试开关与 init 终态 errno
+// init 串行执行，避免并发初始化重复安装 linker hook
 
 use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::Mutex;
 
 use crate::bytesig;
 use crate::errno::Errno;
@@ -9,8 +11,10 @@ use crate::linker;
 static DEBUG: AtomicBool = AtomicBool::new(false);
 // init 终态：Uninit 表示未调过；成功 Ok；失败写具体错误，下次 init 重试
 static INIT_ERRNO: AtomicI32 = AtomicI32::new(Errno::Uninit as i32);
+static INIT_LOCK: Mutex<()> = Mutex::new(());
 
 pub fn init(debuggable: bool) -> Result<(), Errno> {
+    let _guard = INIT_LOCK.lock().map_err(|_| Errno::NotSupport)?;
     if is_ready() {
         return Ok(());
     }
