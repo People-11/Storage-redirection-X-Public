@@ -51,13 +51,8 @@ unsafe fn unhook_finalize(sw: Switch) -> Result<(), Errno> {
         Ok(true) => Ok(()),
         Ok(false) => Err(Errno::UnhookTrampoMismatch),
     };
-    if let Err(e) = cmp {
-        // cmp 失败不 restore：避免踩坏第三方 patch 或读崩的未知状态
-        if let Some(tp) = NonNull::new(sw.tramp_addr) {
-            let _ = trampoline::release(tp);
-        }
-        return Err(e);
-    }
+    // cmp 失败不 restore 也不回收跳板：第三方 patch 可能仍会跳入它
+    cmp?;
 
     // 恢复 prologue 走 guard：被 hook 函数此刻可能正被其他线程执行
     let restore = unsafe {
@@ -72,9 +67,10 @@ unsafe fn unhook_finalize(sw: Switch) -> Result<(), Errno> {
         Err(Errno::HookRewriteCrash) => Err(Errno::UnhookExitCrash),
         other => other.and_then(|inner| inner),
     };
-    // restore 成败都清 orig_slot + 归还 tramp，避免泄露槽 / 残留跳板
+    // 未还原成功时入口仍跳向 replacement，跳板与 orig 槽必须保留
+    restore?;
     release_switch(&sw);
-    restore
+    Ok(())
 }
 
 fn release_switch(sw: &Switch) {
