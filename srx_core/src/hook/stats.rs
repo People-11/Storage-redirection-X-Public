@@ -141,6 +141,9 @@ impl InterceptHub {
             "libsrx_core.so",
             "storage.redirect.x/zygisk/arm64-v8a.so",
             "storage.redirect.x/zygisk/x86_64.so",
+            // 其他 Zygisk 模块经 memfd 加载，GOT 页通常不可写，也不属于重定向对象
+            "/memfd:zygisk-module (deleted)",
+            "/memfd:zygisk-module",
         ] {
             let _ = srx_hook::add_ignore(image);
         }
