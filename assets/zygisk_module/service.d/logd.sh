@@ -31,6 +31,8 @@ resolve_logd_bin_path() {
 start_log_daemon() {
   ensure_log_files
   stop_collector_by_pid_file "$LOGD_PID_FILE"
+  # 运行日志只保留本次开机；logd 启动时按现有行数续写，需在启动前清空
+  : > "$RUNNING_LOG_FILE"
 
   logd_bin=$(resolve_logd_bin_path) || {
     log -p e -t Boot "resolve log daemon abi failed"
