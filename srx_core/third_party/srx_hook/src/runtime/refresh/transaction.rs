@@ -12,6 +12,7 @@ use std::mem;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
 use super::lease::{self, LoaderEpoch};
+use super::module_registry::module_key;
 use super::{CallbackEvent, RefreshError};
 
 #[derive(Clone, Copy)]
@@ -70,11 +71,15 @@ pub(in crate::runtime) struct PreparedRefresh {
     pub(in crate::runtime) committed: bool,
     pub(in crate::runtime) protection_state_changed: bool,
     pub(super) is_full_refresh: bool,
+    // 只有经 select_tasks 准备的刷新会跳过被拒绝写入的模块，重试才有意义
+    pub(super) skips_write_denied: bool,
     epoch: LoaderEpoch,
     patches: Vec<PreparedPatch>,
     pub(super) instructions: Vec<InstructionPatch>,
     pages: Vec<PreparedPage>,
     chains: Vec<PreparedChain>,
+    // 本次提交中 GOT 页无法加写权限的模块，发布后由下一轮准备跳过
+    write_denied: Vec<ModuleInfo>,
     unpublished: UnpublishedHubs,
     guard: android::signal_guard::PreparedGuard,
 }
@@ -96,10 +101,12 @@ impl PreparedRefresh {
             committed: false,
             protection_state_changed: false,
             is_full_refresh: false,
+            skips_write_denied: false,
             patches: Vec::new(),
             instructions: Vec::new(),
             pages: Vec::new(),
             chains: Vec::new(),
+            write_denied: Vec::new(),
             unpublished: UnpublishedHubs {
                 pid: unsafe { libc::getpid() },
                 hubs: Vec::new(),
@@ -261,6 +268,14 @@ impl PreparedRefresh {
         for (target, page) in draft.pending_protections.iter_mut().zip(&self.pages) {
             target.needs_restore = page.pending.needs_restore;
         }
+        draft
+            .write_denied_modules
+            .extend(self.write_denied.iter().map(module_key));
+    }
+
+    // 有模块被拒绝写入时整轮未提交，排除这些模块后重新准备即可让其他模块生效
+    pub(in crate::runtime) fn can_retry_without_write_denied(&self) -> bool {
+        self.skips_write_denied && !self.write_denied.is_empty()
     }
 
     // 覆盖标记与成功发布的状态同生效，失败准备或待恢复页不能覆盖后续 loader 事件。
@@ -321,8 +336,8 @@ impl PreparedRefresh {
                 return Errno::Busy;
             }
         }
-        for index in 0..self.pages.len() {
-            let page = &mut self.pages[index];
+        // 先尝试全部页面，一次收集所有无法加写权限的模块，避免每轮重试只排除一个
+        for page in &mut self.pages {
             if !page.write_required {
                 continue;
             }
@@ -330,17 +345,29 @@ impl PreparedRefresh {
                 &page.pending,
                 page.pending.protection | libc::PROT_WRITE as u32,
             ) {
-                for changed in &mut self.pages {
-                    if changed.pending.needs_restore {
-                        changed.pending.needs_restore =
-                            !protect_page(&changed.pending, changed.pending.protection);
-                    }
+                if !self.write_denied.contains(&page.pending.module) {
+                    self.write_denied.push(page.pending.module.clone());
                 }
-                self.protection_state_changed = true;
-                return Errno::SetProt;
+                continue;
             }
             page.pending.needs_restore = true;
             self.protection_state_changed = true;
+        }
+        if !self.write_denied.is_empty() {
+            for changed in &mut self.pages {
+                if changed.pending.needs_restore {
+                    changed.pending.needs_restore =
+                        !protect_page(&changed.pending, changed.pending.protection);
+                }
+            }
+            self.protection_state_changed = true;
+            for module in &self.write_denied {
+                self.errors.push(RefreshError {
+                    module_path: module.pathname.clone(),
+                    errno: Errno::SetProt,
+                });
+            }
+            return Errno::SetProt;
         }
         for chain in &mut self.chains {
             hub::publish_chain(chain);

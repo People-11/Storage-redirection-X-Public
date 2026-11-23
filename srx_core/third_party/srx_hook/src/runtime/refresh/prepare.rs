@@ -79,6 +79,7 @@ pub(in crate::runtime) fn prepare_refresh(
     draft.known_modules = snapshot.modules.iter().map(module_key).collect();
     let mut prepared = PreparedRefresh::new(draft, snapshot.epoch, status, events, errors)?;
     prepared.is_full_refresh = target_task.is_none();
+    prepared.skips_write_denied = true;
     prepared.prepare_changes(
         state,
         &observed,
@@ -130,6 +131,7 @@ pub(in crate::runtime) fn prepare_clear(state: &CoreState) -> Result<PreparedRef
     draft.tasks.clear();
     draft.task_order.clear();
     draft.known_modules.clear();
+    draft.write_denied_modules.clear();
     let mut prepared =
         PreparedRefresh::new(draft, snapshot.epoch, Errno::Ok, Vec::new(), Vec::new())?;
     prepared.prepare_changes(
@@ -294,6 +296,9 @@ fn select_tasks(
             state.self_base_addr,
             &state.ignore_callers,
         ) {
+            continue;
+        }
+        if state.write_denied_modules.contains(&module_key(module)) {
             continue;
         }
         let has_loader_lease = snapshot.ranges.contains_key(&module.base_addr);

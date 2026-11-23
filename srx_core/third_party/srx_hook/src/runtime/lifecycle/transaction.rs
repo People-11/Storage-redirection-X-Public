@@ -29,11 +29,13 @@ impl CommitResult {
 }
 
 // 每轮从完整快照重新准备；重入过滤器和持续竞争受尝试次数约束。
+// 被拒绝写入的模块在重试前已记入快照，其错误并入最终结果，调用方能看到哪些模块被跳过。
 pub(super) fn run(
     runtime: &ProcessRuntime,
     allow_clearing: bool,
     mut prepare: impl FnMut(&CoreState) -> Result<PreparedRefresh, Errno>,
 ) -> CommitResult {
+    let mut carried_errors = Vec::new();
     for _ in 0..ProcessRuntime::PUBLISH_ATTEMPTS {
         if let Err(status) = fork::check_management() {
             return CommitResult::failed(status);
@@ -55,12 +57,30 @@ pub(super) fn run(
             Err(Errno::Busy) => continue,
             Err(status) => return CommitResult::failed(status),
         };
-        let result = commit(runtime, &source, prepared);
+        let mut result = commit(runtime, &source, prepared);
         if !result.retryable {
+            merge_errors(&mut carried_errors, result.errors);
+            result.errors = carried_errors;
             return result;
         }
+        merge_errors(&mut carried_errors, result.errors);
     }
-    CommitResult::failed(Errno::Busy)
+    CommitResult {
+        errors: carried_errors,
+        ..CommitResult::failed(Errno::Busy)
+    }
+}
+
+// 准备阶段的模块错误每轮都会重新产生，合并时按模块路径与错误码去重
+fn merge_errors(merged: &mut Vec<RefreshError>, errors: Vec<RefreshError>) {
+    for error in errors {
+        if !merged
+            .iter()
+            .any(|known| known.module_path == error.module_path && known.errno == error.errno)
+        {
+            merged.push(error);
+        }
+    }
 }
 
 pub(super) fn commit(
@@ -108,7 +128,9 @@ pub(super) fn commit(
             old = runtime.publish_raw(source.revision, selected)?;
         }
         drop(guard);
-        retryable = applied == Errno::Busy && !change.committed && !change.protection_state_changed;
+        retryable =
+            (applied == Errno::Busy && !change.committed && !change.protection_state_changed)
+                || (applied == Errno::SetProt && change.can_retry_without_write_denied());
         if applied != Errno::Ok {
             status = applied;
         }

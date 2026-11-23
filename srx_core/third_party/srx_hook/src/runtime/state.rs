@@ -189,6 +189,8 @@ pub(super) struct CoreState {
     pub(super) single_task_targets: BTreeMap<HookStub, String>,
     pub(super) ignore_callers: Vec<String>,
     pub(super) known_modules: BTreeSet<String>,
+    // GOT 页无法加写权限的模块实例；后续刷新跳过它们，避免一个模块拖累整个事务
+    pub(super) write_denied_modules: BTreeSet<String>,
     pub(super) recordable: bool,
     pub(super) records: Vec<RecordEntry>,
     pub(super) dlopen_callbacks: Vec<DlopenCallbackEntry>,

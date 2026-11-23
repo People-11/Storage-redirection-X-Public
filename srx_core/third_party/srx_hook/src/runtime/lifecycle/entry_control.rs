@@ -112,6 +112,7 @@ fn finish_clear(runtime: &ProcessRuntime) -> Errno {
         draft.single_task_targets.clear();
         draft.ignore_callers.clear();
         draft.known_modules.clear();
+        draft.write_denied_modules.clear();
         draft.recordable = false;
         draft.records.clear();
         draft.dlopen_callbacks.clear();
