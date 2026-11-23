@@ -1,0 +1,23 @@
+[package]
+name = "srx_inline_hook"
+version = "1.0.0"
+edition = "2024"
+links = "srx_inline_hook"
+
+[package.metadata.android]
+min_api = 31
+verified_system_versions = ["15"]
+target_system_versions = ["12", "13", "14", "15", "16", "17"]
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+libc = "^0.2.186"
+once_cell = "^1.21.4"
+bitflags = "^2.11.1"
+log = "^0.4.29"
+
+# 独立 workspace，避免在库目录内运行 cargo 时被识别为根 workspace 的成员
+[workspace]
+resolver = "3"

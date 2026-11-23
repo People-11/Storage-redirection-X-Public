@@ -12,7 +12,7 @@ Storage Redirect X 由 Android 配置应用和 Rust Zygisk 模块组成，通过
 | `srx_core/src/` | Rust 核心与日志守护进程 |
 | `srx_core/java_src/` | Java Hook 源码，构建时生成内嵌 DEX |
 | `srx_core/native/` | LSPlant C++ 桥接与 CMake 入口 |
-| `srx_core/third_party/` | LSPlant、`srx_hook` 与 `srx_inline_hook` Git 子模块，保留上游依赖、许可证及独立提交历史 |
+| `srx_core/third_party/` | LSPlant Git 子模块（保留上游依赖、许可证及独立提交历史），以及本地维护的 `srx_hook`、`srx_inline_hook` 源码 |
 | `assets/zygisk_module/` | 模块安装、启动、卸载脚本与 SELinux 规则 |
 | `scripts/build.py` | Android 构建与 Zygisk 构建、打包入口 |
 | `.github/` | CI、设备验证脚本与发布更新日志 |
@@ -95,7 +95,7 @@ Storage Redirect X 由 Android 配置应用和 Rust Zygisk 模块组成，通过
 
 依赖版本以 `android/gradle/libs.versions.toml` 和 `srx_core/Cargo.toml` 为准，版本号以 `android/gradle.properties` 与 Rust package version 为准。
 
-首次检出或更新依赖后，按构建说明初始化子模块及 LSPlant 的 DexBuilder 依赖；不初始化上游测试工程的私有依赖。自有底层库修改在子模块内提交，再由主仓库记录对应提交号。
+首次检出或更新依赖后，按构建说明初始化 LSPlant 子模块及其 DexBuilder 依赖；不初始化上游测试工程的私有依赖。`srx_hook` 与 `srx_inline_hook` 是主仓库内的普通源码，直接修改并随主仓库提交。
 
 ```bash
 python scripts/build.py build-zygisk --abi arm64-v8a --debug
@@ -131,7 +131,7 @@ MSYS_NO_PATHCONV=1 adb -s <device_id> exec-out screencap -d <display_id> -p > <o
 - 新增文件先用 `git check-ignore --no-index -v <路径>` 核对；只有真实项目输入才补充最小白名单，不用 `git add -f` 绕过规则。
 - 共享 skills 包括 `commit`、`pull-request`、`version-bump`、`update-dependencies`，在 `.claude/skills/` 与 `.codex/skills/` 同步维护；其他现有设备调试技能仅供本地使用。
 - 检查或升级 Rust、Java/Kotlin/Android 依赖与官方 LSPlant 时使用 `update-dependencies` skill，按请求区分检查与实际升级。
-- `srx_hook` 与 `srx_inline_hook` 通常不检查远端更新；审查任务时仍须检查这两个子模块的本地状态。本次任务相关改动完成并验证后，及时按 `commit` skill 在子模块内原子提交，再由主仓库登记提交号；保留来源不明、无关或未完成的改动。
+- `srx_hook` 与 `srx_inline_hook` 的上游已转为私有，改为本地源码维护，不再跟随远端更新，也不改回子模块；修改与主仓库其他代码一样按 `commit` skill 原子提交，保留原有许可证。
 - `CLAUDE.md` 仅保留 `@AGENTS.md`，规范只维护本文件一份。
 - 按当前任务授权修改分支；未经要求不切换、合并或删除分支。新功能分支使用 `feature/<name>` 或 `fix/<name>`。
 - 所有仓库的每次提交都必须是原子提交，包括主仓库、子模块、版本提升和格式整理：一个提交只处理一个可独立审查的目的，不把多个独立需求混在一起；同一目的必需的源码、配置和锁文件一起提交。

@@ -51,11 +51,23 @@
 !/srx_core/native/cmake/**/
 !/srx_core/native/cmake/**/*.cmake
 
-# 独立维护的第三方库子模块。
+# LSPlant 为上游子模块；srx_hook 与 srx_inline_hook 为本地维护的源码，不放行其 CI 与说明文档。
 !/srx_core/third_party/
-!/srx_core/third_party/srx_hook
-!/srx_core/third_party/srx_inline_hook
 !/srx_core/third_party/lsplant
+!/srx_core/third_party/srx_hook/
+!/srx_core/third_party/srx_hook/Cargo.toml
+!/srx_core/third_party/srx_hook/LICENSE
+!/srx_core/third_party/srx_hook/src/
+!/srx_core/third_party/srx_hook/src/**/
+!/srx_core/third_party/srx_hook/src/**/*.rs
+!/srx_core/third_party/srx_inline_hook/
+!/srx_core/third_party/srx_inline_hook/Cargo.toml
+!/srx_core/third_party/srx_inline_hook/build.rs
+!/srx_core/third_party/srx_inline_hook/include/
+!/srx_core/third_party/srx_inline_hook/include/*.h
+!/srx_core/third_party/srx_inline_hook/src/
+!/srx_core/third_party/srx_inline_hook/src/**/
+!/srx_core/third_party/srx_inline_hook/src/**/*.rs
 
 # 构建脚本与模块安装、运行资源。
 !/scripts/

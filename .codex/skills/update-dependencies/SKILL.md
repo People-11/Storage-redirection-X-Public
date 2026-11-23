@@ -1,6 +1,6 @@
 ---
 name: update-dependencies
-description: Check or upgrade Storage Redirect X Rust crates, Java/Kotlin/Android dependencies and build tools, and official LSPlant. Use for dependency audits or updates; normally exclude remote updates of the owned srx_hook and srx_inline_hook submodules.
+description: Check or upgrade Storage Redirect X Rust crates, Java/Kotlin/Android dependencies and build tools, and official LSPlant. Use for dependency audits or updates; the owned srx_hook and srx_inline_hook sources are maintained locally and have no upstream to follow.
 ---
 
 # Dependency Updates
@@ -12,14 +12,14 @@ Default to the latest stable release. Preserve an existing prerelease channel wh
 ## Inventory and Boundaries
 
 - Inspect the main worktree, staged changes, submodule gitlinks, manifests, lockfiles, version catalogs, and explicit dependency overrides before editing. Preserve unrelated work.
-- Check the local state of `srx_core/third_party/srx_hook` and `srx_core/third_party/srx_inline_hook`, but normally skip their remote version and branch checks. Do not fetch or advance them unless explicitly requested or needed by the current task. Never run a blanket `git submodule update --remote --recursive`.
-- Use the [commit skill](../commit/SKILL.md) for completed task-related local changes in either owned submodule, then record its commit in the parent. Unknown or unrelated edits must remain untouched.
+- `srx_core/third_party/srx_hook` and `srx_core/third_party/srx_inline_hook` are local sources with a private upstream; do not look for or apply upstream versions. Their crate dependencies are in scope like any other manifest. Never run a blanket `git submodule update --remote --recursive`.
+- Use the [commit skill](../commit/SKILL.md) for completed task-related changes. Unknown or unrelated edits must remain untouched.
 
 ## Rust
 
-- Inventory workspace and package `Cargo.toml` files and the root `Cargo.lock`, including build and target-specific dependencies. Distinguish registry, Git, and path sources; do not convert a pinned local submodule back to a remote dependency.
+- Inventory workspace and package `Cargo.toml` files and the root `Cargo.lock`, including build and target-specific dependencies. Distinguish registry, Git, and path sources; do not convert the local hook libraries to registry, Git or submodule dependencies.
 - Check crates.io metadata for direct registry dependencies and changed transitive crates. Update manifest constraints when the latest release is outside them, and resolve the smallest coherent lockfile change. `cargo update` alone does not discover newer incompatible direct releases.
-- Review minimum Rust versions, feature changes, target support, and release notes for breaking upgrades. Upgrade owned submodule registry dependencies only when included in the requested scope; this does not authorize checking their remote branches.
+- Review minimum Rust versions, feature changes, target support, and release notes for breaking upgrades. Upgrade the owned hook libraries' registry dependencies only when included in the requested scope.
 - Preserve the root workspace's `members = ["srx_*"]` and `exclude = ["srx_core/third_party"]`. Explicit member-directory prefixes can pull nested independent workspaces into the root despite exclusions. Confirm membership with Cargo metadata after integration changes.
 
 ## Java, Kotlin, and Android
