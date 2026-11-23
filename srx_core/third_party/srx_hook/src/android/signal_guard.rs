@@ -212,10 +212,6 @@ pub(super) fn load_sigbus_old_action() -> *const libc::sigaction {
     SIGBUS_OLD_ACTION.load(Ordering::Acquire) as *const libc::sigaction
 }
 
-pub fn enable(flag: bool) {
-    SIGSEGV_ENABLE.store(flag, Ordering::SeqCst);
-}
-
 pub fn is_enabled() -> bool {
     SIGSEGV_ENABLE.load(Ordering::SeqCst)
 }

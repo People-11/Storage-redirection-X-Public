@@ -1,6 +1,4 @@
 // dlopen/dlclose 的 monitor proxy 函数，拦截动态库加载卸载并触发 hook 刷新
-use super::super::invoke_dlopen_callbacks_post;
-use super::super::invoke_dlopen_callbacks_pre;
 use super::super::request_refresh_async_full;
 use super::super::request_refresh_async_with_handle;
 use super::super::with_prev_func;
@@ -23,7 +21,6 @@ pub(super) unsafe extern "C" fn monitor_dlopen(
     filename: *const c_char,
     flags: libc::c_int,
 ) -> *mut c_void {
-    invoke_dlopen_callbacks_pre(filename);
     let loader_call = LoaderCall::enter();
     let result = if should_use_android_n_linker_fallback() {
         let caller_addr = hub::get_return_address() as *const c_void;
@@ -40,7 +37,6 @@ pub(super) unsafe extern "C" fn monitor_dlopen(
         .unwrap_or_else(|| unsafe { call_real_dlopen(filename, flags) })
     };
     drop(loader_call);
-    invoke_dlopen_callbacks_post(filename, if result.is_null() { -1 } else { 0 });
     if !result.is_null() {
         request_refresh_async_with_handle(result);
     }
@@ -52,7 +48,6 @@ pub(super) unsafe extern "C" fn monitor_android_dlopen_ext(
     flags: libc::c_int,
     extinfo: *const c_void,
 ) -> *mut c_void {
-    invoke_dlopen_callbacks_pre(filename);
     let loader_call = LoaderCall::enter();
     let result = if should_use_android_n_linker_fallback() {
         let caller_addr = hub::get_return_address() as *const c_void;
@@ -69,7 +64,6 @@ pub(super) unsafe extern "C" fn monitor_android_dlopen_ext(
         .unwrap_or_else(|| unsafe { call_real_android_dlopen_ext(filename, flags, extinfo) })
     };
     drop(loader_call);
-    invoke_dlopen_callbacks_post(filename, if result.is_null() { -1 } else { 0 });
     if !result.is_null() {
         request_refresh_async_with_handle(result);
     }
@@ -101,7 +95,6 @@ pub(super) unsafe extern "C" fn monitor_loader_dlopen(
     flags: libc::c_int,
     caller_addr: *const c_void,
 ) -> *mut c_void {
-    invoke_dlopen_callbacks_pre(filename);
     let loader_call = LoaderCall::enter();
     let self_ptr = monitor_loader_dlopen as *mut c_void;
     let result = with_prev_func(self_ptr, |prev| {
@@ -113,7 +106,6 @@ pub(super) unsafe extern "C" fn monitor_loader_dlopen(
     })
     .unwrap_or_else(|| unsafe { call_real_loader_dlopen(filename, flags, caller_addr) });
     drop(loader_call);
-    invoke_dlopen_callbacks_post(filename, if result.is_null() { -1 } else { 0 });
     if !result.is_null() {
         request_refresh_async_with_handle(result);
     }
@@ -126,7 +118,6 @@ pub(super) unsafe extern "C" fn monitor_loader_android_dlopen_ext(
     extinfo: *const c_void,
     caller_addr: *const c_void,
 ) -> *mut c_void {
-    invoke_dlopen_callbacks_pre(filename);
     let loader_call = LoaderCall::enter();
     let self_ptr = monitor_loader_android_dlopen_ext as *mut c_void;
     let result = with_prev_func(self_ptr, |prev| {
@@ -148,7 +139,6 @@ pub(super) unsafe extern "C" fn monitor_loader_android_dlopen_ext(
         call_real_loader_android_dlopen_ext(filename, flags, extinfo, caller_addr)
     });
     drop(loader_call);
-    invoke_dlopen_callbacks_post(filename, if result.is_null() { -1 } else { 0 });
     if !result.is_null() {
         request_refresh_async_with_handle(result);
     }

@@ -4,13 +4,18 @@
 use super::state::ModuleInfo;
 #[cfg(target_arch = "aarch64")]
 use crate::errno::Errno;
+#[cfg(target_arch = "aarch64")]
 use std::ffi::{CStr, c_char};
 
 // Android O (API 26) 起引入 CFI，低于此版本无需处理
+#[cfg(target_arch = "aarch64")]
 const ANDROID_API_LEVEL_CFI_DISABLE: i32 = 26;
+#[cfg(target_arch = "aarch64")]
 const SYSTEM_PROP_VALUE_MAX: usize = 92;
+#[cfg(target_arch = "aarch64")]
 const RTLD_NEXT_FALLBACK: *mut libc::c_void = (-1isize) as *mut libc::c_void;
 
+#[cfg(target_arch = "aarch64")]
 unsafe extern "C" {
     fn __system_property_get(name: *const c_char, value: *mut c_char) -> libc::c_int;
 }
@@ -43,6 +48,7 @@ pub(super) fn module_proxy_addresses() -> Option<(usize, usize)> {
     }
 }
 
+#[cfg(target_arch = "aarch64")]
 fn android_api_level() -> i32 {
     let prop_name = c"ro.build.version.sdk";
     let mut prop_value = [0 as c_char; SYSTEM_PROP_VALUE_MAX];

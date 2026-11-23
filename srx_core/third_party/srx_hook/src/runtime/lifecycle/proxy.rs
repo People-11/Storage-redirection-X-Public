@@ -4,7 +4,6 @@ use crate::runtime::thread_state;
 use crate::runtime::thread_state::ProxyFrame;
 use core::arch;
 use std::ffi::c_void;
-use std::ptr;
 
 type ProxyStack = thread_state::FixedStack<ProxyFrame, { thread_state::PROXY_STACK_CAP }>;
 
@@ -59,14 +58,6 @@ fn prune_stale_proxy_frames(stack: &mut ProxyStack, current_sp: usize) {
     }
 }
 
-pub(super) fn get_prev_func(func: *mut c_void) -> *mut c_void {
-    if func.is_null() {
-        return ptr::null_mut();
-    }
-    let _ = proxy_enter(func);
-    hub::get_prev_func(func)
-}
-
 // RAII 方式管理 proxy enter/leave，确保异常路径也能正确退出
 pub(super) fn with_prev_func<R, F>(func: *mut c_void, f: F) -> Option<R>
 where
@@ -96,14 +87,6 @@ where
     let prev = hub::get_prev_func(func);
     let result = f(prev);
     Some(result)
-}
-
-pub(super) fn get_return_address() -> *mut c_void {
-    hub::get_return_address()
-}
-
-pub(super) fn pop_stack(return_address: *mut c_void) {
-    hub::pop_stack(return_address)
 }
 
 pub(super) fn proxy_enter(func: *mut c_void) -> bool {
@@ -143,15 +126,4 @@ pub(super) fn proxy_leave(func: *mut c_void) {
         }
     });
     hub::proxy_leave(func);
-}
-
-pub(super) fn clear_proxy_stack() {
-    let result = thread_state::with_thread_state(|state| {
-        if !thread_state::has_active_trampolines() {
-            let _ = state.proxy_stack_mut().clear();
-        }
-    });
-    if result.is_none() {
-        thread_state::report_thread_state_unavailable("clear_proxy_stack");
-    }
 }

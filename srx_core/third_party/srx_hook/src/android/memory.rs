@@ -9,7 +9,6 @@ use std::fs;
 use std::io;
 use std::mem;
 use std::str;
-use std::sync::atomic::{Ordering, fence};
 
 pub const PROT_READ_FLAG: u32 = 0x1;
 pub const PROT_WRITE_FLAG: u32 = 0x2;
@@ -91,16 +90,6 @@ fn parse_protection_range(line: &[u8]) -> Option<ProtectionRange> {
     })
 }
 
-// 路径提示不影响权限结果，按地址覆盖直接定位唯一映射。
-pub fn get_mem_protect(addr: usize, len: usize, _pathname: Option<&str>) -> Result<u32, Errno> {
-    MemoryProtections::default().get(addr, len)
-}
-
-// 查询单个指针大小地址的保护属性
-pub fn get_addr_protect(addr: usize, pathname: Option<&str>) -> Result<u32, Errno> {
-    get_mem_protect(addr, mem::size_of::<usize>(), pathname)
-}
-
 // 修改指定地址所在页面的保护属性
 pub fn set_addr_protect(addr: usize, prot: u32) -> Result<(), Errno> {
     let (start, len) = page_bounds(addr);
@@ -111,12 +100,6 @@ pub fn set_addr_protect(addr: usize, prot: u32) -> Result<(), Errno> {
         return Err(Errno::Unknown);
     }
     Ok(())
-}
-
-// 单地址指令缓存刷新，仅发出内存屏障
-pub fn flush_instruction_cache(addr: usize) {
-    let _ = addr;
-    fence(Ordering::SeqCst);
 }
 
 // 刷新指定地址范围的指令缓存
@@ -163,7 +146,7 @@ fn flush_instruction_cache_impl(start: usize, end: usize) {
 
     #[cfg(target_arch = "x86_64")]
     {
-        fence(Ordering::SeqCst);
+        std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
     }
 }
 

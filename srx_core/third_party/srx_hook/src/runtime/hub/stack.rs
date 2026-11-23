@@ -140,19 +140,6 @@ pub(super) fn get_return_address() -> *mut c_void {
     .unwrap_or(ptr::null_mut())
 }
 
-pub(super) fn pop_stack_by_return_address(return_addr: *mut c_void) {
-    if return_addr.is_null() {
-        return;
-    }
-    let return_addr = return_addr as usize;
-    let _ = with_hub_stack_mut("pop_stack_by_return_address", |state| {
-        let stack = state.hub_stack_mut();
-        if let Some(index) = stack.rposition_by(|frame| frame.return_addr == return_addr) {
-            let _ = stack.remove(index);
-        }
-    });
-}
-
 // trampoline 出口回调：proxy 函数返回后弹出对应栈帧
 pub(super) extern "C" fn hub_pop_stack(hub_ptr: *mut Hub, caller_sp: usize) -> usize {
     if hub_ptr.is_null() {
@@ -235,25 +222,3 @@ pub(super) fn proxy_leave(func: *mut c_void) {
         }
     });
 }
-
-pub(super) fn clear_stack() {
-    let _ = with_hub_stack_mut("clear_stack", |state| {
-        if !thread_state::has_active_trampolines() {
-            let _ = state.hub_stack_mut().clear();
-        }
-    });
-}
-
-#[cfg(test)]
-pub(super) fn with_test_hub_stack<R, F>(f: F) -> R
-where
-    F: FnOnce(&mut HubStack) -> R,
-{
-    match thread_state::with_thread_state(|state| f(state.hub_stack_mut())) {
-        Some(result) => result,
-        None => panic!("测试环境线程状态尚未建立"),
-    }
-}
-
-#[cfg(test)]
-mod tests;

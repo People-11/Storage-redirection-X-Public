@@ -8,8 +8,6 @@ crate-type = ["rlib"]
 
 [dependencies]
 libc = "^0.2"
-once_cell = "^1.19"
-regex = "^1.10"
 
 # 独立 workspace，避免在库目录内运行 cargo 时被识别为根 workspace 的成员
 [workspace]

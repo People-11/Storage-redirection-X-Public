@@ -220,15 +220,6 @@ pub(super) fn discard_unpublished_hub(hub_ptr: *mut Hub) {
     trampoline::discard_unpublished_hub(hub_ptr);
 }
 
-pub(super) fn destroy_hub(hub_ptr: *mut Hub, _with_delay: bool) {
-    if hub_ptr.is_null() {
-        return;
-    }
-    let chain = unsafe { (*hub_ptr).head.swap(ptr::null_mut(), Ordering::SeqCst) };
-    retire_chain(chain);
-    collect_retired(false);
-}
-
 pub(super) fn hub_trampo(hub_ptr: *mut Hub) -> usize {
     if hub_ptr.is_null() {
         0
@@ -283,57 +274,6 @@ fn current_proxies(hub: &Hub) -> Vec<usize> {
     proxies
 }
 
-// 兼容入口由运行时写者串行调用，产品提交优先使用 PreparedChain。
-pub(super) fn add_proxy(hub_ptr: *mut Hub, proxy_func: usize) -> Errno {
-    if hub_ptr.is_null() || proxy_func == 0 {
-        return Errno::InvalidArg;
-    }
-    let mut proxies = current_proxies(unsafe { &*hub_ptr });
-    let index = proxies
-        .iter()
-        .position(|&func| func == proxy_func)
-        .unwrap_or(0);
-    proxies.insert(index, proxy_func);
-    let mut prepared = match build_chain(hub_ptr, &proxies) {
-        Ok(prepared) => prepared,
-        Err(err) => return err,
-    };
-    publish_chain(&mut prepared);
-    Errno::Ok
-}
-
-pub(super) fn del_proxy(hub_ptr: *mut Hub, proxy_func: usize) -> (Errno, bool) {
-    if hub_ptr.is_null() || proxy_func == 0 {
-        return (Errno::InvalidArg, false);
-    }
-    let mut proxies = current_proxies(unsafe { &*hub_ptr });
-    let Some(index) = proxies.iter().position(|&func| func == proxy_func) else {
-        return (Errno::NotFound, !proxies.is_empty());
-    };
-    proxies.remove(index);
-    let mut prepared = match build_chain(hub_ptr, &proxies) {
-        Ok(prepared) => prepared,
-        Err(err) => return (err, !proxies.is_empty()),
-    };
-    publish_chain(&mut prepared);
-    (Errno::Ok, !proxies.is_empty())
-}
-
-pub(super) fn first_enabled(hub_ptr: *mut Hub) -> usize {
-    if hub_ptr.is_null() {
-        return 0;
-    }
-    let hub = unsafe { &*hub_ptr };
-    let chain = acquire_chain(hub);
-    let first = if chain.is_null() {
-        hub.orig_addr
-    } else {
-        unsafe { (*(*chain).head).func }
-    };
-    release_chain(chain as usize);
-    first
-}
-
 pub(super) fn get_prev_func(func: *mut ffi::c_void) -> *mut ffi::c_void {
     stack::get_prev_func(func)
 }
@@ -342,14 +282,6 @@ pub(super) fn get_return_address() -> *mut ffi::c_void {
     stack::get_return_address()
 }
 
-pub(super) fn pop_stack(return_address: *mut ffi::c_void) {
-    stack::pop_stack_by_return_address(return_address)
-}
-
 pub(super) fn proxy_leave(func: *mut ffi::c_void) {
     stack::proxy_leave(func)
-}
-
-pub(super) fn clear_stack() {
-    stack::clear_stack();
 }

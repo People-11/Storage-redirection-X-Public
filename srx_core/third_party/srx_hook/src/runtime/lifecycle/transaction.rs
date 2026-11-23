@@ -5,12 +5,11 @@ use std::sync::Arc;
 use crate::api::RefreshError;
 use crate::errno::Errno;
 use crate::runtime::fork;
-use crate::runtime::refresh::{CallbackEvent, PreparedRefresh};
+use crate::runtime::refresh::PreparedRefresh;
 use crate::runtime::state::{CoreState, ProcessRuntime};
 
 pub(super) struct CommitResult {
     pub(super) status: Errno,
-    pub(super) events: Vec<CallbackEvent>,
     pub(super) errors: Vec<RefreshError>,
     pub(super) committed: bool,
     retryable: bool,
@@ -20,7 +19,6 @@ impl CommitResult {
     fn failed(status: Errno) -> Self {
         Self {
             status,
-            events: Vec::new(),
             errors: Vec::new(),
             committed: false,
             retryable: false,
@@ -148,11 +146,6 @@ pub(super) fn commit(
     let committed = !old.is_null() && prepared.committed;
     CommitResult {
         status,
-        events: if committed {
-            prepared.events
-        } else {
-            Vec::new()
-        },
         errors: prepared.errors,
         committed,
         retryable,

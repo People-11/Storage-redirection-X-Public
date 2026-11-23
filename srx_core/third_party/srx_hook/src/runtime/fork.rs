@@ -52,10 +52,6 @@ pub(super) fn register_handlers() -> Result<(), Errno> {
     Ok(())
 }
 
-pub(super) fn handlers_registered() -> bool {
-    REGISTRATION.load(Ordering::Acquire) & 3 == 2
-}
-
 pub(super) fn is_frozen() -> bool {
     let owner = GATE_PID.load(Ordering::Acquire);
     (owner != 0 && owner != unsafe { libc::getpid() })

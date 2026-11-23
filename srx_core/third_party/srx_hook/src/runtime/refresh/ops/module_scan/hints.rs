@@ -5,10 +5,7 @@ use crate::runtime::state::{MutexPoisonRecover, PidLocal};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
-use super::{
-    ModuleInfo, NOLOAD_NAMESPACE_HINT_LIMIT, OBSERVED_INSTANCE_HINT_LIMIT,
-    OBSERVED_INSTANCE_NAMESPACE_LIMIT, OBSERVED_PATH_NAMESPACE_LIMIT, ObservedIdentityHint,
-};
+use super::{ModuleInfo, NOLOAD_NAMESPACE_HINT_LIMIT, ObservedIdentityHint};
 
 pub(super) fn observed_identity_hints() -> &'static Mutex<BTreeMap<usize, ObservedIdentityHint>> {
     static OBSERVED_HINTS: PidLocal<Mutex<BTreeMap<usize, ObservedIdentityHint>>> =
@@ -34,68 +31,11 @@ pub(super) fn noload_namespace_hints() -> &'static Mutex<BTreeMap<(usize, usize)
     NOLOAD_NAMESPACE_HINTS.get()
 }
 
-pub(super) fn resolve_namespace_id_by_base(base_addr: usize) -> Option<usize> {
-    observed_identity_hints()
-        .lock()
-        .unwrap()
-        .get(&base_addr)
-        .map(|hint| hint.namespace_id)
-        .filter(|namespace_id| *namespace_id != 0)
-}
-
-pub(super) fn resolve_namespace_id_by_instance(instance_id: usize) -> Option<usize> {
-    if instance_id == 0 {
-        return None;
-    }
-    observed_instance_namespace_hints()
-        .lock()
-        .unwrap()
-        .get(&instance_id)
-        .copied()
-        .filter(|namespace_id| *namespace_id != 0)
-}
-
 pub(super) fn normalize_pathname(pathname: &str) -> &str {
     pathname
         .trim()
         .strip_suffix(" (deleted)")
         .unwrap_or(pathname.trim())
-}
-
-pub(super) fn observe_path_namespace_hint(pathname: &str, namespace_id: usize) {
-    if namespace_id == 0 {
-        return;
-    }
-    let normalized = normalize_pathname(pathname);
-    if normalized.is_empty() {
-        return;
-    }
-    let basename = normalized
-        .rsplit('/')
-        .next()
-        .filter(|name| *name != normalized);
-    let mut hints = observed_path_namespace_hints().lock_or_poison();
-    upsert_path_namespace_hint(&mut hints, normalized, namespace_id);
-    if let Some(name) = basename {
-        upsert_path_namespace_hint(&mut hints, name, namespace_id);
-    }
-    trim_observed_path_namespace_hints(&mut hints, normalized, basename);
-}
-
-// 同一 basename 出现在不同 namespace 时标记为 0（歧义），避免错误匹配
-fn upsert_path_namespace_hint(hints: &mut BTreeMap<String, usize>, key: &str, namespace_id: usize) {
-    if key.is_empty() {
-        return;
-    }
-    match hints.get(key).copied() {
-        Some(existing) if existing != 0 && existing != namespace_id => {
-            hints.insert(key.to_string(), 0);
-        }
-        Some(_) => {}
-        None => {
-            hints.insert(key.to_string(), namespace_id);
-        }
-    }
 }
 
 pub(super) fn resolve_namespace_id_by_path(pathname: &str) -> Option<usize> {
@@ -109,80 +49,6 @@ pub(super) fn resolve_namespace_id_by_path(pathname: &str) -> Option<usize> {
     }
     let basename = normalized.rsplit('/').next()?;
     hints.get(basename).copied().filter(|id| *id != 0)
-}
-
-pub(super) fn trim_observed_instance_hints(
-    hints: &mut BTreeMap<usize, ObservedIdentityHint>,
-    keep_base: usize,
-) {
-    while hints.len() > OBSERVED_INSTANCE_HINT_LIMIT {
-        let Some(first_base) = hints.keys().next().copied() else {
-            break;
-        };
-        if first_base != keep_base {
-            hints.remove(&first_base);
-            continue;
-        }
-
-        let Some(last_base) = hints.keys().next_back().copied() else {
-            break;
-        };
-        if last_base == keep_base {
-            break;
-        }
-        hints.remove(&last_base);
-    }
-}
-
-pub(super) fn trim_observed_instance_namespace_hints(
-    hints: &mut BTreeMap<usize, usize>,
-    keep_instance: usize,
-) {
-    while hints.len() > OBSERVED_INSTANCE_NAMESPACE_LIMIT {
-        let Some(first_instance) = hints.keys().next().copied() else {
-            break;
-        };
-        if first_instance != keep_instance {
-            hints.remove(&first_instance);
-            continue;
-        }
-
-        let Some(last_instance) = hints.keys().next_back().copied() else {
-            break;
-        };
-        if last_instance == keep_instance {
-            break;
-        }
-        hints.remove(&last_instance);
-    }
-}
-
-fn trim_observed_path_namespace_hints(
-    hints: &mut BTreeMap<String, usize>,
-    keep_path: &str,
-    keep_basename: Option<&str>,
-) {
-    while hints.len() > OBSERVED_PATH_NAMESPACE_LIMIT {
-        let Some(first_path) = hints.keys().next().cloned() else {
-            break;
-        };
-        let keep_first =
-            first_path == keep_path || keep_basename.is_some_and(|key| first_path == key);
-        if !keep_first {
-            hints.remove(first_path.as_str());
-            continue;
-        }
-
-        let Some(last_path) = hints.keys().next_back().cloned() else {
-            break;
-        };
-        let keep_last = last_path == keep_path || keep_basename.is_some_and(|key| last_path == key);
-        if !keep_last {
-            hints.remove(last_path.as_str());
-            continue;
-        }
-        break;
-    }
 }
 
 pub(super) fn trim_noload_namespace_hints(

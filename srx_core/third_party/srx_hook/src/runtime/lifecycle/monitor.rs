@@ -77,17 +77,6 @@ unsafe extern "C" {
     fn __system_property_get(name: *const c_char, value: *mut c_char) -> libc::c_int;
 }
 
-pub(super) fn reset_auto_monitor_installed() {
-    flags().epoch.fetch_add(1, Ordering::AcqRel);
-    flags().installing.store(0, Ordering::Release);
-    flags().installed.store(false, Ordering::SeqCst);
-    flags().periodic_escalated.store(false, Ordering::SeqCst);
-    flags().success_streak.store(0, Ordering::SeqCst);
-    flags().legacy_installed.store(false, Ordering::SeqCst);
-    flags().legacy_requested.store(false, Ordering::SeqCst);
-    flags().periodic_enabled.store(true, Ordering::SeqCst);
-}
-
 pub(super) fn install_auto_loader_monitor_hooks() {
     if flags().installed.load(Ordering::Acquire) {
         return;
@@ -318,11 +307,8 @@ fn install_legacy_hooks_for_all_modules(installation: &Installation) -> bool {
             stub: 0,
             task_type: TaskType::All,
             caller_path_name: None,
-            caller_allow_filter: None,
-            callee_path_name: None,
             sym_name: symbol.to_string(),
             new_func: proxy as usize,
-            hooked: None,
         };
         complete &= ensure_monitor_task(task, installation);
     }
@@ -352,11 +338,8 @@ fn install_loader_hooks_for_libdl(installation: &Installation) -> bool {
             stub: 0,
             task_type: TaskType::Single,
             caller_path_name: Some(LIBDL_BASENAME.to_string()),
-            caller_allow_filter: None,
-            callee_path_name: None,
             sym_name: symbol.to_string(),
             new_func: proxy as usize,
-            hooked: None,
         };
         complete &= ensure_monitor_task(task, installation);
     }
@@ -467,6 +450,3 @@ pub(super) fn start_monitor_thread() {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

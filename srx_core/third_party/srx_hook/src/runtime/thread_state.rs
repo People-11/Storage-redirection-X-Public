@@ -7,17 +7,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 mod trampoline;
 pub(crate) use trampoline::{
-    after_fork_child, has_active_trampolines, has_trampoline_frame, trampoline_enter,
-    trampoline_leave,
+    after_fork_child, has_trampoline_frame, trampoline_enter, trampoline_leave,
 };
-
-pub(crate) fn active_trampoline_count() -> usize {
-    trampoline::active_trampoline_count()
-}
-
-pub(crate) fn current_active_trampoline_count() -> usize {
-    trampoline::current_active_trampoline_count()
-}
 
 pub(crate) const HUB_STACK_CAP: usize = 32;
 pub(crate) const PROXY_STACK_CAP: usize = 32;
@@ -54,16 +45,6 @@ impl<T: Copy, const N: usize> FixedStack<T, N> {
 
     pub(crate) fn len(&self) -> usize {
         self.len
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    pub(crate) fn clear(&mut self) -> usize {
-        let old_len = self.len;
-        self.len = 0;
-        old_len
     }
 
     pub(crate) fn push(&mut self, item: T) -> bool {

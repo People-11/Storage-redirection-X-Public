@@ -1,6 +1,5 @@
 // ELF 解析与 PLT/GOT hook 核心模块
 
-use crate::android::memory as util;
 use crate::errno::Errno;
 use crate::log;
 use std::collections::BTreeSet;
@@ -22,19 +21,8 @@ use reloc::{elf_r_sym, elf_r_type};
 
 // ELF header e_ident 相关常量
 const EI_NIDENT: usize = 16;
-const EI_CLASS: usize = 4;
-const EI_DATA: usize = 5;
-const EI_VERSION: usize = 6;
 
-const ELFMAG: [u8; 4] = [0x7f, b'E', b'L', b'F'];
-const SELFMAG: usize = 4;
-
-const ELFCLASS64: u8 = 2;
-const ELFDATA2LSB: u8 = 1;
-const EV_CURRENT: u8 = 1;
-
-const ET_EXEC: u16 = 2;
-const ET_DYN: u16 = 3;
+#[cfg(target_arch = "aarch64")]
 const SHN_UNDEF: u16 = 0;
 const PT_LOAD: u32 = 1;
 const PT_DYNAMIC: u32 = 2;
@@ -59,23 +47,21 @@ const DT_ANDROID_RELA: i64 = 0x6000_0010;
 const DT_ANDROID_RELSZ: i64 = 0x6000_0011;
 const DT_ANDROID_RELASZ: i64 = 0x6000_0012;
 
-const EM_AARCH64: u16 = 183;
-const EM_X86_64: u16 = 62;
-
 // AArch64 重定位类型
+#[cfg(target_arch = "aarch64")]
 const R_AARCH64_JUMP_SLOT: u32 = 1026;
+#[cfg(target_arch = "aarch64")]
 const R_AARCH64_GLOB_DAT: u32 = 1025;
+#[cfg(target_arch = "aarch64")]
 const R_AARCH64_ABS64: u32 = 257;
 
 // x86_64 重定位类型
-const R_X86_64_JUMP_SLOT: u32 = 7;
-const R_X86_64_GLOB_DAT: u32 = 6;
-const R_X86_64_64: u32 = 1;
-
-#[cfg(target_arch = "aarch64")]
-const EXPECTED_MACHINE: u16 = EM_AARCH64;
 #[cfg(target_arch = "x86_64")]
-const EXPECTED_MACHINE: u16 = EM_X86_64;
+const R_X86_64_JUMP_SLOT: u32 = 7;
+#[cfg(target_arch = "x86_64")]
+const R_X86_64_GLOB_DAT: u32 = 6;
+#[cfg(target_arch = "x86_64")]
+const R_X86_64_64: u32 = 1;
 
 // 按目标架构选择对应的重定位类型常量
 #[cfg(target_arch = "aarch64")]
@@ -180,8 +166,6 @@ pub struct Elf {
     bias_addr: usize,
     ehdr: *const ElfEhdr,
     phdr: *const ElfPhdr,
-    dyn_section: *const ElfDyn,
-    dyn_sz: usize,
     strtab: *const c_char,
     symtab: *const ElfSym,
     // .rel(a).plt 段地址与大小

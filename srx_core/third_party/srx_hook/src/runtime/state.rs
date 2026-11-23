@@ -1,7 +1,5 @@
 // 运行时核心状态定义，包含所有 hook 任务、slot、模块信息及全局同步原语
-use crate::api::{
-    CallerAllowFilter, HookMode, HookStub, HookedCallback, PostDlopenCallback, PreDlopenCallback,
-};
+use crate::api::{HookMode, HookStub};
 use crate::errno::Errno;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -49,30 +47,7 @@ impl<T> MutexPoisonRecover<T> for Mutex<T> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum TaskType {
     Single,
-    Partial,
     All,
-}
-
-// hook 成功后的用户回调入口
-#[derive(Clone, Copy)]
-pub(super) struct HookedEntry {
-    pub(super) callback: HookedCallback,
-    pub(super) arg: usize,
-}
-
-// caller 过滤器，用于 Partial 模式按调用方筛选
-#[derive(Clone, Copy)]
-pub(super) struct AllowFilterEntry {
-    pub(super) filter: CallerAllowFilter,
-    pub(super) arg: usize,
-}
-
-// dlopen/dlclose 事件的用户回调
-#[derive(Clone, Copy)]
-pub(super) struct DlopenCallbackEntry {
-    pub(super) pre: Option<PreDlopenCallback>,
-    pub(super) post: Option<PostDlopenCallback>,
-    pub(super) arg: usize,
 }
 
 // 单个 hook 任务的完整描述
@@ -81,11 +56,8 @@ pub(super) struct Task {
     pub(super) stub: HookStub,
     pub(super) task_type: TaskType,
     pub(super) caller_path_name: Option<String>,
-    pub(super) caller_allow_filter: Option<AllowFilterEntry>,
-    pub(super) callee_path_name: Option<String>,
     pub(super) sym_name: String,
     pub(super) new_func: usize,
-    pub(super) hooked: Option<HookedEntry>,
 }
 
 // PLT slot 的唯一标识，由 caller 模块信息和 slot 地址组成
@@ -113,26 +85,6 @@ pub(super) struct ModuleInfo {
     pub(super) base_addr: usize,
     pub(super) instance_id: usize,
     pub(super) namespace_id: usize,
-}
-
-// hook/unhook 操作类型，用于审计记录
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum RecordOp {
-    Hook,
-    Unhook,
-}
-
-// 单条操作审计记录
-#[derive(Clone, Debug)]
-pub(super) struct RecordEntry {
-    pub(super) op: RecordOp,
-    pub(super) ts_ms: u64,
-    pub(super) status_code: i32,
-    pub(super) caller_lib_name: String,
-    pub(super) lib_name: String,
-    pub(super) sym_name: String,
-    pub(super) new_addr: usize,
-    pub(super) stub: HookStub,
 }
 
 // 初始化状态，记录当前 hook 模式和初始化结果
@@ -191,7 +143,4 @@ pub(super) struct CoreState {
     pub(super) known_modules: BTreeSet<String>,
     // GOT 页无法加写权限的模块实例；后续刷新跳过它们，避免一个模块拖累整个事务
     pub(super) write_denied_modules: BTreeSet<String>,
-    pub(super) recordable: bool,
-    pub(super) records: Vec<RecordEntry>,
-    pub(super) dlopen_callbacks: Vec<DlopenCallbackEntry>,
 }

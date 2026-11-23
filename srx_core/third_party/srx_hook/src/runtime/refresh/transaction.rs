@@ -11,9 +11,9 @@ use std::iter;
 use std::mem;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
+use super::RefreshError;
 use super::lease::{self, LoaderEpoch};
 use super::module_registry::module_key;
-use super::{CallbackEvent, RefreshError};
 
 #[derive(Clone, Copy)]
 pub(super) struct ObservedSlot {
@@ -66,7 +66,6 @@ impl Drop for UnpublishedHubs {
 pub(in crate::runtime) struct PreparedRefresh {
     pub(in crate::runtime) draft: CoreState,
     pub(in crate::runtime) status: Errno,
-    pub(in crate::runtime) events: Vec<CallbackEvent>,
     pub(in crate::runtime) errors: Vec<RefreshError>,
     pub(in crate::runtime) committed: bool,
     pub(in crate::runtime) protection_state_changed: bool,
@@ -89,14 +88,12 @@ impl PreparedRefresh {
         draft: CoreState,
         epoch: LoaderEpoch,
         status: Errno,
-        events: Vec<CallbackEvent>,
         errors: Vec<RefreshError>,
     ) -> Result<Self, Errno> {
         Ok(Self {
             draft,
             epoch,
             status,
-            events,
             errors,
             committed: false,
             protection_state_changed: false,

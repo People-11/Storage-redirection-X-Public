@@ -20,10 +20,6 @@ use crate::runtime::fork;
 use crate::runtime::state::set_install_pid;
 use std::sync::atomic::Ordering;
 
-pub(super) fn get_version() -> String {
-    version::version_str_full()
-}
-
 // 反查自身模块加载基址，用于按基址忽略自身
 // 与路径无关，覆盖 memfd 匿名加载（如 neozygisk）场景
 fn resolve_self_base_addr() -> usize {

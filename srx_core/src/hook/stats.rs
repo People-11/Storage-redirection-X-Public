@@ -174,13 +174,7 @@ impl InterceptHub {
                 continue;
             }
 
-            let stub = srx_hook::hook_all(
-                None,
-                entry.symbol,
-                entry.new_func,
-                None,
-                std::ptr::null_mut(),
-            );
+            let stub = srx_hook::hook_all(entry.symbol, entry.new_func);
 
             // 单个符号失败只影响对应操作，其余 Hook 仍需生效
             if stub.is_none() {

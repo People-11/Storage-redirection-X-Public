@@ -2,7 +2,6 @@
 #[cfg(target_arch = "aarch64")]
 use crate::android;
 use crate::android::memory::MemoryProtections;
-use crate::api;
 use crate::api::HookStub;
 use crate::elf::Elf;
 use crate::errno::Errno;
@@ -18,12 +17,12 @@ use std::mem;
 use std::ptr;
 
 use super::lease::{self, LoaderEpoch};
-use super::matcher::{CalleeResolve, is_task_match_caller, resolve_callee_addrs};
+use super::matcher::is_task_match_caller;
 use super::module_registry::{module_instance_key, module_key, prune_dead_single_task_targets};
 #[cfg(target_arch = "aarch64")]
 use super::transaction::InstructionPatch;
 use super::transaction::{AuxiliaryPatch, ObservedSlot, PreparedRefresh};
-use super::{CallbackEvent, RefreshError, ops};
+use super::{RefreshError, ops};
 
 struct ModuleSnapshot {
     modules: Vec<ModuleInfo>,
@@ -62,22 +61,13 @@ pub(in crate::runtime) fn prepare_refresh(
     let (captured, observed, auxiliary) = capture_slots(state, &snapshot, &approved)?;
     let mut draft = state.clone();
     prune_draft(&mut draft, &snapshot.modules, &observed);
-    let mut events = Vec::new();
     let mut errors = Vec::new();
     let mut status = Errno::Ok;
     for capture in captured {
-        apply_capture(
-            state,
-            &mut draft,
-            capture,
-            &observed,
-            &mut events,
-            &mut errors,
-            &mut status,
-        );
+        apply_capture(&mut draft, capture, &observed, &mut errors, &mut status);
     }
     draft.known_modules = snapshot.modules.iter().map(module_key).collect();
-    let mut prepared = PreparedRefresh::new(draft, snapshot.epoch, status, events, errors)?;
+    let mut prepared = PreparedRefresh::new(draft, snapshot.epoch, status, errors)?;
     prepared.is_full_refresh = target_task.is_none();
     prepared.skips_write_denied = true;
     prepared.prepare_changes(
@@ -90,70 +80,10 @@ pub(in crate::runtime) fn prepare_refresh(
     Ok(prepared)
 }
 
-pub(in crate::runtime) fn prepare_unhook(
-    state: &CoreState,
-    stub: HookStub,
-) -> Result<PreparedRefresh, Errno> {
-    if !state.tasks.contains_key(&stub) {
-        return Err(Errno::InvalidArg);
-    }
-    let snapshot = discover_modules()?;
-    let (_, observed, _) = capture_slots(state, &snapshot, &[])?;
-    let mut draft = state.clone();
-    prune_draft(&mut draft, &snapshot.modules, &observed);
-    for slot in draft.slots.values_mut() {
-        slot.task_chain.retain(|registered| *registered != stub);
-    }
-    draft.slots.retain(|_, slot| !slot.task_chain.is_empty());
-    draft.task_slots.remove(&stub);
-    draft.single_task_targets.remove(&stub);
-    draft.tasks.remove(&stub);
-    draft.task_order.retain(|registered| *registered != stub);
-    let mut prepared =
-        PreparedRefresh::new(draft, snapshot.epoch, Errno::Ok, Vec::new(), Vec::new())?;
-    prepared.prepare_changes(
-        state,
-        &observed,
-        &[],
-        &snapshot.modules,
-        pending_pages(state, &snapshot)?,
-    )?;
-    Ok(prepared)
-}
-
-pub(in crate::runtime) fn prepare_clear(state: &CoreState) -> Result<PreparedRefresh, Errno> {
-    let snapshot = discover_modules()?;
-    let (_, observed, _) = capture_slots(state, &snapshot, &[])?;
-    let mut draft = state.clone();
-    draft.slots.clear();
-    draft.task_slots.clear();
-    draft.single_task_targets.clear();
-    draft.tasks.clear();
-    draft.task_order.clear();
-    draft.known_modules.clear();
-    draft.write_denied_modules.clear();
-    let mut prepared =
-        PreparedRefresh::new(draft, snapshot.epoch, Errno::Ok, Vec::new(), Vec::new())?;
-    prepared.prepare_changes(
-        state,
-        &observed,
-        &[],
-        &snapshot.modules,
-        pending_pages(state, &snapshot)?,
-    )?;
-    Ok(prepared)
-}
-
 #[cfg(target_arch = "aarch64")]
 pub(in crate::runtime) fn prepare_cfi_init(state: &CoreState) -> Result<PreparedRefresh, Errno> {
     let snapshot = discover_modules()?;
-    let mut prepared = PreparedRefresh::new(
-        state.clone(),
-        snapshot.epoch,
-        Errno::Ok,
-        Vec::new(),
-        Vec::new(),
-    )?;
+    let mut prepared = PreparedRefresh::new(state.clone(), snapshot.epoch, Errno::Ok, Vec::new())?;
     prepared.instructions = capture_cfi_instructions(&snapshot)?;
     prepared.prepare_changes(
         state,
@@ -348,23 +278,10 @@ fn capture_slots(
                 );
             }
         }
-        let leased_modules: Vec<ModuleInfo> = snapshot
-            .modules
-            .iter()
-            .filter(|module| snapshot.ranges.contains_key(&module.base_addr))
-            .cloned()
-            .collect();
-        let mut callee_cache = BTreeMap::new();
         let mut captured = Vec::new();
         for (task, module) in approved {
             let slots = if let Some(ranges) = snapshot.ranges.get(&module.base_addr) {
-                let callee = callee_cache
-                    .entry(task.stub)
-                    .or_insert_with(|| resolve_callee_addrs(task, &leased_modules));
-                match callee {
-                    Ok(callee) => capture_task(task, module, callee, ranges, &mut capture),
-                    Err(error) => Err(*error),
-                }
+                capture_task(task, module, ranges, &mut capture)
             } else {
                 Err(Errno::ModuleLeaseUnavailable)
             };
@@ -385,13 +302,9 @@ fn capture_slots(
 fn capture_task(
     task: &Task,
     module: &ModuleInfo,
-    callee: &CalleeResolve,
     ranges: &[(usize, usize)],
     capture: &mut SlotCapture,
 ) -> Result<Vec<SlotKey>, Errno> {
-    if task.callee_path_name.is_some() && callee.addrs.as_ref().is_some_and(BTreeSet::is_empty) {
-        return Ok(Vec::new());
-    }
     let entry = capture
         .modules
         .entry(module.base_addr)
@@ -400,7 +313,7 @@ fn capture_task(
             cfi: None,
         });
     let elf = entry.elf.as_ref().map_err(|error| *error)?;
-    let slots = ops::find_slots_guard(elf, &task.sym_name, callee.addrs.as_ref())?;
+    let slots = ops::find_slots_guard(elf, &task.sym_name)?;
     if !slots.is_empty() {
         (*entry.cfi.get_or_insert_with(|| {
             capture_cfi(
@@ -446,7 +359,7 @@ fn capture_cfi(
         ("__cfi_slowpath", slowpath),
         ("__cfi_slowpath_diag", diagnostic),
     ] {
-        for address in ops::find_slots_guard(elf, symbol, None)? {
+        for address in ops::find_slots_guard(elf, symbol)? {
             validate_slot(address, ranges)?;
             let expected = ops::read_slot(address)?;
             if expected == target {
@@ -518,11 +431,9 @@ fn prune_draft(
 }
 
 fn apply_capture(
-    original: &CoreState,
     state: &mut CoreState,
     captured: TaskSlots,
     observed: &BTreeMap<SlotKey, ObservedSlot>,
-    events: &mut Vec<CallbackEvent>,
     errors: &mut Vec<RefreshError>,
     status: &mut Errno,
 ) {
@@ -549,14 +460,10 @@ fn apply_capture(
                     errno: error,
                 });
             }
-            emit_event(&task, &module, error, 0, events);
             return;
         }
     };
     if slots.is_empty() {
-        if task.task_type == TaskType::Single {
-            emit_event(&task, &module, Errno::NoSym, 0, events);
-        }
         return;
     }
     for key in slots {
@@ -571,68 +478,13 @@ fn apply_capture(
         if slot.task_chain.contains(&task.stub) {
             continue;
         }
-        let previous = planned_first_function(original, &state.tasks, &key, slot);
-        if state.init.mode == api::HookMode::Manual {
-            emit_event(&task, &module, Errno::OrigAddr, previous, events);
-        }
         slot.task_chain.push(task.stub);
         state.task_slots.entry(task.stub).or_default().insert(key);
-        emit_event(&task, &module, Errno::Ok, previous, events);
     }
     if task.task_type == TaskType::Single {
         state
             .single_task_targets
             .entry(task.stub)
             .or_insert_with(|| module_key(&module));
-    }
-}
-
-fn planned_first_function(
-    original: &CoreState,
-    tasks: &BTreeMap<HookStub, Task>,
-    key: &SlotKey,
-    slot: &SlotEntry,
-) -> usize {
-    if slot.hub_ptr == 0 {
-        return runtime::refresh::transaction::chain_functions(tasks, &slot.task_chain)
-            .first()
-            .copied()
-            .unwrap_or(slot.orig_func);
-    }
-    let mut existing: BTreeSet<usize> = original
-        .slots
-        .get(key)
-        .into_iter()
-        .flat_map(|slot| &slot.task_chain)
-        .filter_map(|stub| original.tasks.get(stub).map(|task| task.new_func))
-        .collect();
-    let mut latest = None;
-    for stub in &slot.task_chain {
-        if let Some(task) = tasks.get(stub)
-            && existing.insert(task.new_func)
-        {
-            latest = Some(task.new_func);
-        }
-    }
-    latest.unwrap_or_else(|| hub::first_enabled(slot.hub_ptr as *mut hub::Hub))
-}
-
-fn emit_event(
-    task: &Task,
-    module: &ModuleInfo,
-    status: Errno,
-    previous: usize,
-    events: &mut Vec<CallbackEvent>,
-) {
-    if let Some(hooked) = task.hooked {
-        events.push(CallbackEvent {
-            hooked,
-            task_stub: task.stub,
-            status,
-            caller_path_name: module.pathname.clone(),
-            sym_name: task.sym_name.clone(),
-            new_func: task.new_func,
-            prev_func: previous,
-        });
     }
 }

@@ -171,23 +171,6 @@ pub(crate) fn has_trampoline_frame(hub_id: usize, return_addr: usize, caller_sp:
         .is_some()
 }
 
-pub(crate) fn current_active_trampoline_count() -> usize {
-    let raw = existing_state();
-    if raw.is_null() {
-        0
-    } else {
-        unsafe { &*raw }.frames.len()
-    }
-}
-
-pub(crate) fn has_active_trampolines() -> bool {
-    current_active_trampoline_count() != 0
-}
-
-pub(crate) fn active_trampoline_count() -> usize {
-    ACTIVE_COUNT.load(Ordering::SeqCst)
-}
-
 pub(crate) fn after_fork_child() {
     let pid = unsafe { libc::getpid() };
     if PROCESS_PID.load(Ordering::Acquire) == pid {

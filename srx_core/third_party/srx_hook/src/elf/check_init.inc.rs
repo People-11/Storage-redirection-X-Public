@@ -1,36 +1,5 @@
 // ELF header 校验与 Elf 结构体初始化，通过 include! 嵌入 elf.rs
 
-// 校验内存中的 ELF header：magic、class、字节序、架构等
-pub unsafe fn check_elf_header(base_addr: usize) -> Result<(), Errno> {
-    let ehdr = &*(base_addr as *const ElfEhdr);
-    if ehdr.e_ident[..SELFMAG] != ELFMAG {
-        return Err(Errno::Format);
-    }
-
-    let class = ehdr.e_ident[EI_CLASS];
-    if class != ELFCLASS64 {
-        return Err(Errno::Format);
-    }
-
-    if ehdr.e_ident[EI_DATA] != ELFDATA2LSB {
-        return Err(Errno::Format);
-    }
-    if ehdr.e_ident[EI_VERSION] != EV_CURRENT {
-        return Err(Errno::Format);
-    }
-    if ehdr.e_type != ET_EXEC && ehdr.e_type != ET_DYN {
-        return Err(Errno::Format);
-    }
-    if ehdr.e_machine != EXPECTED_MACHINE {
-        return Err(Errno::Format);
-    }
-    if ehdr.e_version as u8 != EV_CURRENT {
-        return Err(Errno::Format);
-    }
-
-    Ok(())
-}
-
 impl Elf {
     // 从内存映像解析 ELF，提取 dynamic section 中的符号表、重定位表、hash 表等
     pub unsafe fn init(base_addr: usize, pathname: &str) -> Result<Self, Errno> {
@@ -67,8 +36,6 @@ impl Elf {
             bias_addr,
             ehdr,
             phdr,
-            dyn_section,
-            dyn_sz,
             strtab: ptr::null(),
             symtab: ptr::null(),
             relplt: 0,
@@ -229,21 +196,5 @@ impl Elf {
         Ok(())
     }
 
-
-    // 判断地址是否落在某个 PT_LOAD 段的虚拟地址范围内
-    fn is_addr_in_load_segments(&self, addr: usize) -> bool {
-        let phdrs = unsafe { slice::from_raw_parts(self.phdr, (*self.ehdr).e_phnum as usize) };
-        for phdr in phdrs {
-            if phdr.p_type != PT_LOAD {
-                continue;
-            }
-            let start = self.bias_addr + phdr.p_vaddr as usize;
-            let end = start.saturating_add(phdr.p_memsz as usize);
-            if addr >= start && addr < end {
-                return true;
-            }
-        }
-        false
-    }
 
 }

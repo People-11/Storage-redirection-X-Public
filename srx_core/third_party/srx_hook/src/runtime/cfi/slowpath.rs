@@ -132,7 +132,7 @@ fn collect_module_symbol_addrs_from_import_slots(
         }
         let candidates = signal_guard::with_guard(|| unsafe {
             let elf = elf::Elf::init(module.base_addr, &module.pathname).ok()?;
-            let slots = elf.find_got_slots(symbol, None).ok()?;
+            let slots = elf.find_got_slots(symbol).ok()?;
             let mut values = Vec::with_capacity(slots.len());
             for slot in slots {
                 let value = ptr::read(slot as *const usize);
